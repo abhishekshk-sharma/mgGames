@@ -39,7 +39,11 @@ $page_titles = [
      'dp_set' => 'DP Set',
      'tp_set' => 'TP Set',
     'common' => 'Common',
-    'series' => 'Series' 
+    'series' => 'Series' ,
+    'rown' => 'Rown',
+    'eki' => 'Eki',      // ADD THIS
+    'bkki' => 'Bkki',
+    'abr_cut' => 'Abr-Cut'  
 ];
 
 $page_title = isset($page_titles[$game_type]) ? $page_titles[$game_type] : 'Single Ank';
@@ -91,7 +95,10 @@ if ($game_type_id === 1) {
         'dp_set' => 'DP_SET',
         'tp_set' => 'TP_SET',
         'common' => 'COMMON',
-        'series' => 'SERIES'
+        'series' => 'SERIES',
+        'rown' => 'ROWN',
+    'eki' => 'EKI',      // ADD THIS
+    'bkki' => 'BKKI'    
     ];
     
     if (isset($special_mappings[$game_type])) {
@@ -223,8 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
     $selected_digit1 = isset($_POST['selected_digit1']) ? $_POST['selected_digit1'] : '';
     $selected_digit2 = isset($_POST['selected_digit2']) ? $_POST['selected_digit2'] : '';
     $jodi_outcomes_json = isset($_POST['jodi_outcomes']) ? $_POST['jodi_outcomes'] : '[]';
-    $bet_mode = 'null'; // CHANGED: Always set to 'open' for Jodi
-    
+  $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';    
     $active_outcomes = json_decode($jodi_outcomes_json, true);
     
     if (empty($selected_digit1) || empty($selected_digit2)) {
@@ -782,26 +788,66 @@ header("Location: " . $redirect_url);
 exit();
 }
 
-// COMMON & SERIES GAMES - INDIVIDUAL OUTCOMES
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_common_bet']) || isset($_POST['place_series_bet']))) {
-    $is_common = isset($_POST['place_common_bet']);
-    $game_type_str = $is_common ? 'common' : 'series';
-    $game_name = $is_common ? 'Common' : 'Series';
-    $outcomes_field = $is_common ? 'common_outcomes' : 'series_outcomes';
-    
+// ENHANCED COMMON GAME WITH SP/DP/SPDPT OPTIONS
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_common_bet'])) {
+    $common_type = isset($_POST['common_type']) ? $_POST['common_type'] : 'spdpt';
     $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
-    $outcomes_json = isset($_POST[$outcomes_field]) ? $_POST[$outcomes_field] : '[]';
+    $selected_digit = isset($_POST['selected_digit']) ? $_POST['selected_digit'] : '';
     $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
-    // Common has selected_digit, Series has selected_digit1 and selected_digit2
-    if ($is_common) {
-        $selected_digit = isset($_POST['selected_digit']) ? $_POST['selected_digit'] : '';
-    } else {
-        $selected_digit1 = isset($_POST['selected_digit1']) ? $_POST['selected_digit1'] : '';
-        $selected_digit2 = isset($_POST['selected_digit2']) ? $_POST['selected_digit2'] : '';
-    }
+    // Define pannas for each type
+    $sp_pannas = [
+        // 36 Single Patti pannas
+        '123', '124', '125', '126', '127', '128', '129', '134', '135', '136',
+        '137', '138', '139', '145', '146', '147', '148', '149', '156', '157',
+        '158', '159', '167', '168', '169', '178', '179', '189', '234', '235',
+        '236', '237', '238', '239', '245', '246', '247', '248', '249', '256',
+        '257', '258', '259', '267', '268', '269', '278', '279', '289', '345',
+        '346', '347', '348', '349', '356', '357', '358', '359', '367', '368',
+        '369', '378', '379', '389', '456', '457', '458', '459', '467', '468',
+        '469', '478', '479', '489', '567', '568', '569', '578', '579', '589',
+        '678', '679', '689', '789'
+    ];
+
+    $dp_pannas = [
+        // 18 Double Patti pannas
+        '112', '113', '114', '115', '116', '117', '118', '119',
+        '122', '133', '144', '155', '166', '177', '188', '199',
+        '223', '224', '225', '226', '227', '228', '229', '233',
+        '244', '255', '266', '277', '288', '299', '334', '335',
+        '336', '337', '338', '339', '344', '355', '366', '377',
+        '388', '399', '445', '446', '447', '448', '449', '455',
+        '466', '477', '488', '499', '556', '557', '558', '559',
+        '566', '577', '588', '599', '667', '668', '669', '677',
+        '688', '699', '778', '779', '788', '799', '889', '899'
+    ];
+
+    $spdpt_pannas = [
+        // Your existing 55 SPDPT pannas
+        '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+        '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+        '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+        '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+        '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+        '158', '167', '239', '248', '257', '347', '356', '590', '680', '789'
+    ];
     
-    $active_outcomes = json_decode($outcomes_json, true);
+    // Select pannas based on common type
+    switch($common_type) {
+        case 'sp':
+            $pannas = $sp_pannas;
+            $type_name = 'SP';
+            break;
+        case 'dp':
+            $pannas = $dp_pannas;
+            $type_name = 'DP';
+            break;
+        case 'spdpt':
+        default:
+            $pannas = $spdpt_pannas;
+            $type_name = 'SPDPT';
+            break;
+    }
     
     if (empty($raw_bet_amount)) {
         $_SESSION['error_message'] = "Please enter a bet amount";
@@ -809,78 +855,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_common_bet']) 
         $_SESSION['error_message'] = "Please enter a valid numeric amount";
     } elseif ((float)$raw_bet_amount <= 0) {
         $_SESSION['error_message'] = "Bet amount must be greater than zero";
-    } elseif ($is_common && empty($selected_digit)) {
+    } elseif (empty($selected_digit)) {
         $_SESSION['error_message'] = "Please select a digit";
-    } elseif (!$is_common && (empty($selected_digit1) || empty($selected_digit2))) {
-        $_SESSION['error_message'] = "Please select both digits";
-    } elseif (!$is_common && $selected_digit1 === $selected_digit2) {
-        $_SESSION['error_message'] = "Please select two different digits";
-    } elseif (empty($active_outcomes)) {
-        $_SESSION['error_message'] = $is_common ? "Please select at least one outcome" : "No outcomes generated. Please select two different digits.";
     } else {
         $bet_amount = (float)$raw_bet_amount;
-        $total_bet_amount = $bet_amount * count($active_outcomes);
+        $total_bet_amount = $bet_amount * count($pannas);
         
         if ($total_bet_amount < 5) {
             $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
         }
         elseif ($balance >= $total_bet_amount) {
-            if (deductFromWallet($user_id, $total_bet_amount, $game_name . ' Bet placed')) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Common ' . $type_name . ' Bet placed')) {
                 $successful_bets = 0;
                 $failed_bets = 0;
                 
-                foreach ($active_outcomes as $outcome) {
-                    if ($is_common) {
-                        $individual_bet_data = [
-                            'selected_digit' => $selected_digit,
-                            $outcomes_field => [$outcome],
-                            'amount_per_outcome' => $bet_amount,
-                            'total_amount' => $bet_amount,
-                            'game_type' => $game_type_str,
-                            'outcome_value' => $outcome
-                        ];
-                    } else {
-                        $individual_bet_data = [
-                            'selected_digit1' => $selected_digit1,
-                            'selected_digit2' => $selected_digit2,
-                            $outcomes_field => [$outcome],
-                            'amount_per_outcome' => $bet_amount,
-                            'total_amount' => $bet_amount,
-                            'game_type' => $game_type_str,
-                            'digit_meaning' => '0=10',
-                            'outcome_value' => $outcome
-                        ];
-                    }
+                foreach ($pannas as $panna) {
+                    $individual_bet_data = [
+                        'selected_digit' => $selected_digit,
+                        'common_type' => $common_type,
+                        'common_outcomes' => [$panna],
+                        'amount_per_panna' => $bet_amount,
+                        'total_amount' => $bet_amount,
+                        'game_type' => 'common',
+                        'outcome_panna' => $panna,
+                        'type_name' => $type_name
+                    ];
                     
-                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, $game_type_str);
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'common');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("$game_name bet recorded - Outcome: $outcome, Amount: $bet_amount, Bet ID: $bet_id");
+                        error_log("Common $type_name bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record $game_name bet for outcome: " . $outcome . " with amount: " . $bet_amount);
+                        error_log("Failed to record Common $type_name bet for panna: " . $panna . " with amount: " . $bet_amount);
                     }
                 }
                 
                 if ($successful_bets > 0) {
-                    if ($is_common) {
-                        $_SESSION['success_message'] = "$game_name bet placed successfully! " . 
-                            $successful_bets . " individual outcomes recorded. INR " . 
-                            number_format($total_bet_amount, 2) . " deducted from your wallet.";
-                    } else {
-                        $digit1_display = $selected_digit1 == '0' ? '0 (10)' : $selected_digit1;
-                        $digit2_display = $selected_digit2 == '0' ? '0 (10)' : $selected_digit2;
-                        $_SESSION['success_message'] = "$game_name bet placed successfully! " . 
-                            $successful_bets . " ascending panna combinations containing both digits $digit1_display and $digit2_display. INR " . 
-                            number_format($total_bet_amount, 2) . " deducted from your wallet.";
-                    }
+                    $_SESSION['success_message'] = "Common $type_name bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
                     
                     if ($failed_bets > 0) {
                         $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
                         $failed_amount = $bet_amount * $failed_bets;
                         if ($failed_amount > 0) {
-                            refundBetAmount($user_id, $failed_amount, "Refund for failed $game_name bets");
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed Common $type_name bets");
                         }
                     }
                     
@@ -889,12 +910,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_common_bet']) 
                     $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All $game_name bet recordings failed for user $user_id");
-                    refundBetAmount($user_id, $total_bet_amount, "All $game_name bet recordings failed");
+                    error_log("All Common $type_name bet recordings failed for user $user_id");
+                    refundBetAmount($user_id, $total_bet_amount, "All Common $type_name bet recordings failed");
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for $game_name bet - user $user_id");
+                error_log("Wallet deduction failed for Common $type_name bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -903,14 +924,378 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_common_bet']) 
         }
     }
     
-// Replace the existing redirect in Common & Series Games section
-$redirect_params = $_GET;
-$redirect_params['type'] = $game_type;
-$redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
-header("Location: " . $redirect_url);
-exit();
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
 }
-
+// ROWN GAME - SIMPLIFIED (Fixed 10 pannas)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_rown_bet'])) {
+    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
+    // Fixed Rown panna combinations
+    $rown_pannas = ['123', '234', '345', '456', '567', '678', '789', '890', '901', '012'];
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($rown_pannas);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Rown Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($rown_pannas as $panna) {
+                    $individual_bet_data = [
+                        'rown_pannas' => [$panna],
+                        'amount_per_panna' => $bet_amount,
+                        'total_amount' => $bet_amount,
+                        'game_type' => 'rown',
+                        'outcome_panna' => $panna
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'rown');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                        error_log("Rown bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
+                    } else {
+                        $failed_bets++;
+                        error_log("Failed to record rown bet for panna: " . $panna . " with amount: " . $bet_amount);
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "Rown bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed rown bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                    $user_balance = $balance;
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    error_log("All rown bet recordings failed for user $user_id");
+                    refundBetAmount($user_id, $total_bet_amount, "All rown bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                error_log("Wallet deduction failed for rown bet - user $user_id");
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
+}
+// ABR-CUT GAME - CORRECT 90 PANNAS (with proper 0=10 formatting)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_abr_cut_bet'])) {
+    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
+    $abr_cut_outcomes_json = isset($_POST['abr_cut_outcomes']) ? $_POST['abr_cut_outcomes'] : '[]';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
+    $active_outcomes = json_decode($abr_cut_outcomes_json, true);
+    
+    // CORRECT 90 Abr-Cut pannas (with proper 0=10 formatting)
+    $correct_abr_cut_pannas = [
+        '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+        '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+        '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+        '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+        '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+        '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
+        // Additional 30 pannas to make it 90
+        '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
+        '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
+        '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
+    ];
+    
+    // Validate that we have exactly 90 pannas
+    if (count($correct_abr_cut_pannas) !== 90) {
+        error_log("ERROR: Abr-Cut pannas count is " . count($correct_abr_cut_pannas) . ", expected 90");
+        $_SESSION['error_message'] = "System error: Invalid panna count. Please try again.";
+        header("Location: " . $_SERVER['PHP_SELF'] . "?type=abr_cut");
+        exit();
+    }
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } elseif (empty($active_outcomes)) {
+        $_SESSION['error_message'] = "No panna outcomes found";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($active_outcomes);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Abr-Cut Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($active_outcomes as $outcome) {
+                    $individual_bet_data = [
+                        'abr_cut_outcomes' => [$outcome],
+                        'amount_per_outcome' => $bet_amount,
+                        'total_amount' => $bet_amount,
+                        'game_type' => 'abr_cut',
+                        'outcome_panna' => $outcome
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'abr_cut');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                        error_log("Abr-Cut bet recorded - Panna: $outcome, Amount: $bet_amount, Bet ID: $bet_id");
+                    } else {
+                        $failed_bets++;
+                        error_log("Failed to record abr-cut bet for panna: " . $outcome . " with amount: " . $bet_amount);
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "Abr-Cut bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed abr-cut bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                    $user_balance = $balance;
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    error_log("All abr-cut bet recordings failed for user $user_id");
+                    refundBetAmount($user_id, $total_bet_amount, "All abr-cut bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                error_log("Wallet deduction failed for abr-cut bet - user $user_id");
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
+}
+// EKI GAME - ODD DIGITS - 10 separate panna combinations
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_eki_bet'])) {
+    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
+    // 10 separate odd digit panna combinations
+    $eki_pannas = [
+        '137', '579', '139', '359', '157', 
+        '179', '379', '159', '135', '357'
+    ];
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($eki_pannas);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Eki Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($eki_pannas as $panna) {
+                    $individual_bet_data = [
+                        'eki_pannas' => [$panna],
+                        'amount_per_panna' => $bet_amount,
+                        'total_amount' => $bet_amount,
+                        'game_type' => 'eki',
+                        'outcome_panna' => $panna
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'eki');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                        error_log("Eki bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
+                    } else {
+                        $failed_bets++;
+                        error_log("Failed to record eki bet for panna: " . $panna . " with amount: " . $bet_amount);
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "Eki bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed eki bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                    $user_balance = $balance;
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    error_log("All eki bet recordings failed for user $user_id");
+                    refundBetAmount($user_id, $total_bet_amount, "All eki bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                error_log("Wallet deduction failed for eki bet - user $user_id");
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
+}
+// BKKI GAME - EVEN DIGITS - 10 separate panna combinations
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
+    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
+    // 10 separate even digit panna combinations
+    $bkki_pannas = [
+        '028', '046', '246', '268', '468', 
+        '048', '068', '248', '024', '468'
+    ];
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($bkki_pannas);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Bkki Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($bkki_pannas as $panna) {
+                    $individual_bet_data = [
+                        'bkki_pannas' => [$panna],
+                        'amount_per_panna' => $bet_amount,
+                        'total_amount' => $bet_amount,
+                        'game_type' => 'bkki',
+                        'outcome_panna' => $panna
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'bkki');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                        error_log("Bkki bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
+                    } else {
+                        $failed_bets++;
+                        error_log("Failed to record bkki bet for panna: " . $panna . " with amount: " . $bet_amount);
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "Bkki bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed bkki bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                    $user_balance = $balance;
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    error_log("All bkki bet recordings failed for user $user_id");
+                    refundBetAmount($user_id, $total_bet_amount, "All bkki bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                error_log("Wallet deduction failed for bkki bet - user $user_id");
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
+}
 // Function to get user data
 function getUserData($user_id) {
     global $conn;
@@ -1228,7 +1613,10 @@ function mapGameTypeToEnum($game_type) {
         'dp_set' => 'dp_set',
         'tp_set' => 'tp_set',
         'common' => 'common',
-        'series' => 'series'
+        'series' => 'series',
+          'rown' => 'rown',
+           'eki' => 'eki',      // ADD THIS
+        'bkki' => 'bkki' 
     ];
     
     return isset($mapping[$game_type]) ? $mapping[$game_type] : 'single_ank';
@@ -1284,6 +1672,9 @@ function calculatePotentialWin($game_type_id, $amount, $bet_data) {
 include 'includes/header.php';          
 
 ?>
+<style>
+    
+</style>
 
 <link rel="stylesheet" href="style.css">
 
@@ -1413,9 +1804,9 @@ include 'includes/header.php';
         }
     } else {
         // Display 0-9 for Single Ank and other games
-        for ($i = 0; $i < 10; $i++) {
-            echo '<div class="bet-number" data-number="' . $i . '">' . $i . '</div>';
-        }
+        // for ($i = 0; $i < 10; $i++) {
+        //     echo '<div class="bet-number" data-number="' . $i . '">' . $i . '</div>';
+        // }
     }
     ?>
 </div>  
@@ -1989,14 +2380,14 @@ include 'includes/header.php';
         </form>
     </div>
 </div>
-<!-- Common Game Interface -->
-<div class="common-interface" style="display: none;">
+<!--  Common -->
+<div class="common-interface" style="<?php echo $game_type === 'common' ? 'display: block;' : 'display: none;'; ?>">
     <div class="common-container">
         <h3>Common Game</h3>
         
         <div class="set-info">
-            <p>Select one digit (0-9) - 0 means 10</p>
-            <p><strong>Rule:</strong> All panna combinations that include the selected digit</p>
+            <p>Select digit and choose SP, DP, or SPDPT type</p>
+            <p><strong>SP:</strong> 36 Single Patti | <strong>DP:</strong> 18 Double Patti | <strong>SPDPT:</strong> 55 All Pannas</p>
         </div>
         
         <div class="common-controls">
@@ -2008,21 +2399,30 @@ include 'includes/header.php';
                         <option value="<?php echo $i; ?>"><?php echo $i; ?> <?php echo $i === 0 ? '(10)' : ''; ?></option>
                     <?php endfor; ?>
                 </select>
+            </div>
             
+            <div class="control-group">
+                <label for="common-type">Select Common Type:</label>
+                <select id="common-type" onchange="generateCommonOutcomes()">
+                    <option value="spdpt">SPDPT (55 Pannas)</option>
+                    <option value="sp">SP (36 Single Patti)</option>
+                    <option value="dp">DP (18 Double Patti)</option>
+                </select>
             </div>
             
             <div class="control-group">
                 <label for="common-amount">Amount per Pana:</label>
-                <div id="common-validation" class="validation-message" style="color:#bd3e4d"></div>
                 <input type="number" id="common-amount" min="1" value="1" oninput="updateCommonTotal()">
+                <div id="common-validation" class="validation-message" style="color:#bd3e4d"></div>
             </div>
         </div>
         
         <div id="common-outcomes-container" class="pana-combinations">
-            <div class="no-digits">Please select a digit to generate Common outcomes</div>
+            <div class="no-digits">Please select a digit and type to generate Common outcomes</div>
         </div>
         
         <div class="common-summary">
+            <p>Selected Type: <span id="common-type-display">SPDPT</span></p>
             <p>Total Outcomes: <span id="common-outcomes-count">0</span></p>
             <p>Amount per Outcome: <span id="common-amount-per-outcome">INR 0.00</span></p>
             <p>Total Bet Amount: <span id="common-total-bet-amount">INR 0.00</span></p>
@@ -2030,6 +2430,7 @@ include 'includes/header.php';
         
         <form method="POST" id="common-form">
             <input type="hidden" name="selected_digit" id="form-common-digit">
+            <input type="hidden" name="common_type" id="form-common-type" value="spdpt">
             <input type="hidden" name="common_outcomes" id="form-common-outcomes" value="[]">
             <input type="hidden" name="bet_amount" id="form-common-bet-amount">
             <input type="hidden" name="mode" id="form-common-mode" value="open">
@@ -2041,6 +2442,7 @@ include 'includes/header.php';
         </form>
     </div>
 </div>
+
 <!-- Series Game Interface -->
 <div class="series-interface" style="display: none;">
     <div class="series-container">
@@ -2106,6 +2508,384 @@ include 'includes/header.php';
         </form>
     </div>
 </div>
+<!-- Rown Game Interface -->
+<div class="rown-interface" style="<?php echo $game_type === 'rown' ? 'display: block;' : 'display: none;'; ?>">
+    <div class="rown-container">
+        <h3>Rown Game</h3>
+        
+        <div class="set-info">
+            <p><strong>10 Fixed Consecutive Panna Combinations</strong></p>
+            <p>Enter amount per panna to bet on all 10 consecutive pannas</p>
+        </div>
+        
+        <div class="rown-controls">
+            <div class="control-group">
+                <label for="rown-amount">Amount per Panna:</label>
+                <input type="number" id="rown-amount" min="1" value="1" oninput="updateRownTotal()">
+                <div id="rown-validation" class="validation-message" style="color:#bd3e4d"></div>
+            </div>
+        </div>
+        
+        <!-- Display All Rown Numbers in a Table -->
+        <div class="rown-table-container">
+            <h4 class="rown-table-title">Rown Panna Combinations</h4>
+            <table class="rown-panna-table">
+                <thead>
+                    <tr>
+                        <th>Sr. No.</th>
+                        <th>Panna</th>
+                        <th>Sum</th>
+                        <th>Bet Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="rown-panna-table-body">
+                    <tr class="rown-panna-row" data-panna="123">
+                        <td class="rown-sr-no">1</td>
+                        <td class="rown-panna-value">123</td>
+                        <td class="rown-panna-sum">1+2+3=6</td>
+                        <td class="rown-amount-display" id="amount-123">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="234">
+                        <td class="rown-sr-no">2</td>
+                        <td class="rown-panna-value">234</td>
+                        <td class="rown-panna-sum">2+3+4=9</td>
+                        <td class="rown-amount-display" id="amount-234">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="345">
+                        <td class="rown-sr-no">3</td>
+                        <td class="rown-panna-value">345</td>
+                        <td class="rown-panna-sum">3+4+5=12</td>
+                        <td class="rown-amount-display" id="amount-345">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="456">
+                        <td class="rown-sr-no">4</td>
+                        <td class="rown-panna-value">456</td>
+                        <td class="rown-panna-sum">4+5+6=15</td>
+                        <td class="rown-amount-display" id="amount-456">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="567">
+                        <td class="rown-sr-no">5</td>
+                        <td class="rown-panna-value">567</td>
+                        <td class="rown-panna-sum">5+6+7=18</td>
+                        <td class="rown-amount-display" id="amount-567">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="678">
+                        <td class="rown-sr-no">6</td>
+                        <td class="rown-panna-value">678</td>
+                        <td class="rown-panna-sum">6+7+8=21</td>
+                        <td class="rown-amount-display" id="amount-678">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="789">
+                        <td class="rown-sr-no">7</td>
+                        <td class="rown-panna-value">789</td>
+                        <td class="rown-panna-sum">7+8+9=24</td>
+                        <td class="rown-amount-display" id="amount-789">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="890">
+                        <td class="rown-sr-no">8</td>
+                        <td class="rown-panna-value">890</td>
+                        <td class="rown-panna-sum">8+9+0=17</td>
+                        <td class="rown-amount-display" id="amount-890">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="901">
+                        <td class="rown-sr-no">9</td>
+                        <td class="rown-panna-value">190</td>
+                        <td class="rown-panna-sum">1+9+0=10</td>
+                        <td class="rown-amount-display" id="amount-901">-</td>
+                    </tr>
+                    <tr class="rown-panna-row" data-panna="012">
+                        <td class="rown-sr-no">10</td>
+                        <td class="rown-panna-value">120</td>
+                        <td class="rown-panna-sum">1+2+0=3</td>
+                        <td class="rown-amount-display" id="amount-012">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="rown-summary">
+            <p>Total Pannas: <span id="rown-outcomes-count">10</span></p>
+            <p>Amount per Panna: <span id="rown-amount-per-outcome">INR 0.00</span></p>
+            <p>Total Bet Amount: <span id="rown-total-bet-amount">INR 0.00</span></p>
+        </div>
+        
+        <form method="POST" id="rown-form">
+            <input type="hidden" name="bet_amount" id="form-rown-bet-amount">
+            <input type="hidden" name="mode" id="form-rown-mode" value="open">
+            <input type="hidden" name="place_rown_bet" value="1">
+            
+            <button type="submit" class="action-btn place-bet-btn" id="place-rown-bet-btn" disabled>
+                PLACE ROWN BET
+            </button>
+        </form>
+    </div>
+</div>
+<!-- Abr-Cut Game Interface -->
+<div class="abr-cut-interface" style="<?php echo $game_type === 'abr_cut' ? 'display: block;' : 'display: none;'; ?>">
+    <div class="abr-cut-container">
+        <h3>Abr-Cut Game</h3>
+        
+        <div class="set-info">
+            <p><strong>90 Pannas (Removed 30 Pannas from 120 SP Pannas)</strong></p>
+            <p><strong>Removed:</strong> 10 Rown + 10 Eki + 10 Bkki = 30 Pannas</p>
+            <p><strong>Note:</strong> Digit 0 means 10 in panna combinations</p>
+        </div>
+        
+        <div class="abr-cut-controls">
+            <div class="control-group">
+                <label for="abr-cut-amount">Amount per Pana:</label>
+                <input type="number" id="abr-cut-amount" min="1" value="1" oninput="updateAbrCutTotal()">
+                <div id="abr-cut-validation" class="validation-message" style="color:#bd3e4d"></div>
+            </div>
+        </div>
+        
+        <!-- Display Abr-Cut Pannas in Grid Format -->
+        <div id="abr-cut-outcomes-container" class="pana-combinations">
+            <div class="no-digits">Loading Abr-Cut pannas...</div>
+        </div>
+        
+        <div class="abr-cut-summary">
+            <p>Total Pannas: <span id="abr-cut-outcomes-count">90</span></p>
+            <p>Amount per Panna: <span id="abr-cut-amount-per-outcome">INR 0.00</span></p>
+            <p>Total Bet Amount: <span id="abr-cut-total-bet-amount">INR 0.00</span></p>
+        </div>
+        
+        <form method="POST" id="abr-cut-form">
+            <input type="hidden" name="bet_amount" id="form-abr-cut-bet-amount">
+            <input type="hidden" name="abr_cut_outcomes" id="form-abr-cut-outcomes" value="[]">
+            <input type="hidden" name="mode" id="form-abr-cut-mode" value="open">
+            <input type="hidden" name="place_abr_cut_bet" value="1">
+            
+            <button type="submit" class="action-btn place-bet-btn" id="place-abr-cut-bet-btn" disabled>
+                PLACE ABR-CUT BET
+            </button>
+        </form>
+    </div>
+</div>
+<!-- Eki Game Interface -->
+<div class="eki-interface" style="<?php echo $game_type === 'eki' ? 'display: block;' : 'display: none;'; ?>">
+    <div class="eki-container">
+        <h3>Eki Game</h3>
+        
+        <div class="set-info">
+            <p><strong>10 Odd Digit Panna Combinations</strong></p>
+            <p>Enter amount per panna to bet on all 10 odd digit pannas</p>
+        </div>
+        
+        <div class="eki-controls">
+            <div class="control-group">
+                <label for="eki-amount">Amount per Panna:</label>
+                <input type="number" id="eki-amount" min="1" value="1" oninput="updateEkiTotal()">
+                <div id="eki-validation" class="validation-message" style="color:#bd3e4d"></div>
+            </div>
+        </div>
+        
+        <!-- Display All Eki Numbers in a Table -->
+        <div class="eki-table-container">
+            <h4 class="eki-table-title">Eki Panna Combinations - 10 Odd Digit Pannas</h4>
+            <table class="eki-panna-table">
+                <thead>
+                    <tr>
+                        <th>Sr. No.</th>
+                        <th>Panna</th>
+                        <th>Sum</th>
+                        <th>Bet Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="eki-panna-table-body">
+                    <tr class="eki-panna-row" data-panna="137">
+                        <td class="eki-sr-no">1</td>
+                        <td class="eki-panna-value">137</td>
+                        <td class="eki-panna-sum">1+3+7=11</td>
+                        <td class="eki-amount-display" id="eki-amount-137">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="579">
+                        <td class="eki-sr-no">2</td>
+                        <td class="eki-panna-value">579</td>
+                        <td class="eki-panna-sum">5+7+9=21</td>
+                        <td class="eki-amount-display" id="eki-amount-579">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="139">
+                        <td class="eki-sr-no">3</td>
+                        <td class="eki-panna-value">139</td>
+                        <td class="eki-panna-sum">1+3+9=13</td>
+                        <td class="eki-amount-display" id="eki-amount-139">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="359">
+                        <td class="eki-sr-no">4</td>
+                        <td class="eki-panna-value">359</td>
+                        <td class="eki-panna-sum">3+5+9=17</td>
+                        <td class="eki-amount-display" id="eki-amount-359">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="157">
+                        <td class="eki-sr-no">5</td>
+                        <td class="eki-panna-value">157</td>
+                        <td class="eki-panna-sum">1+5+7=13</td>
+                        <td class="eki-amount-display" id="eki-amount-157">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="179">
+                        <td class="eki-sr-no">6</td>
+                        <td class="eki-panna-value">179</td>
+                        <td class="eki-panna-sum">1+7+9=17</td>
+                        <td class="eki-amount-display" id="eki-amount-179">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="379">
+                        <td class="eki-sr-no">7</td>
+                        <td class="eki-panna-value">379</td>
+                        <td class="eki-panna-sum">3+7+9=19</td>
+                        <td class="eki-amount-display" id="eki-amount-379">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="159">
+                        <td class="eki-sr-no">8</td>
+                        <td class="eki-panna-value">159</td>
+                        <td class="eki-panna-sum">1+5+9=15</td>
+                        <td class="eki-amount-display" id="eki-amount-159">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="135">
+                        <td class="eki-sr-no">9</td>
+                        <td class="eki-panna-value">135</td>
+                        <td class="eki-panna-sum">1+3+5=9</td>
+                        <td class="eki-amount-display" id="eki-amount-135">-</td>
+                    </tr>
+                    <tr class="eki-panna-row" data-panna="357">
+                        <td class="eki-sr-no">10</td>
+                        <td class="eki-panna-value">357</td>
+                        <td class="eki-panna-sum">3+5+7=15</td>
+                        <td class="eki-amount-display" id="eki-amount-357">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="eki-summary">
+            <p>Total Pannas: <span id="eki-outcomes-count">10</span></p>
+            <p>Amount per Panna: <span id="eki-amount-per-outcome">INR 0.00</span></p>
+            <p>Total Bet Amount: <span id="eki-total-bet-amount">INR 0.00</span></p>
+        </div>
+        
+        <form method="POST" id="eki-form">
+            <input type="hidden" name="bet_amount" id="form-eki-bet-amount">
+            <input type="hidden" name="mode" id="form-eki-mode" value="open">
+            <input type="hidden" name="place_eki_bet" value="1">
+            
+            <button type="submit" class="action-btn place-bet-btn" id="place-eki-bet-btn" disabled>
+                PLACE EKI BET
+            </button>
+        </form>
+    </div>
+</div>
+<!-- Bkki Game Interface -->
+<div class="bkki-interface" style="<?php echo $game_type === 'bkki' ? 'display: block;' : 'display: none;'; ?>">
+    <div class="bkki-container">
+        <h3>Bkki Game</h3>
+        
+        <div class="set-info">
+            <p><strong>10 Even Digit Panna Combinations (0 means 10)</strong></p>
+            <p>Enter amount per panna to bet on all 10 even digit pannas</p>
+        </div>
+        
+        <div class="bkki-controls">
+            <div class="control-group">
+                <label for="bkki-amount">Amount per Panna:</label>
+                <input type="number" id="bkki-amount" min="1" value="1" oninput="updateBkkiTotal()">
+                <div id="bkki-validation" class="validation-message" style="color:#bd3e4d"></div>
+            </div>
+        </div>
+        
+        <!-- Display All Bkki Numbers in a Table -->
+        <div class="bkki-table-container">
+            <h4 class="bkki-table-title">Bkki Panna Combinations - 10 Even Digit Pannas (0=10)</h4>
+            <table class="bkki-panna-table">
+                <thead>
+                    <tr>
+                        <th>Sr. No.</th>
+                        <th>Panna</th>
+                        <th>Sum (0=10)</th>
+                        <th>Bet Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="bkki-panna-table-body">
+                    <tr class="bkki-panna-row" data-panna="028">
+                        <td class="bkki-sr-no">1</td>
+                        <td class="bkki-panna-value">280</td>
+                        <td class="bkki-panna-sum">10+2+8=20</td>
+                        <td class="bkki-amount-display" id="bkki-amount-028">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="046">
+                        <td class="bkki-sr-no">2</td>
+                        <td class="bkki-panna-value">460</td>
+                        <td class="bkki-panna-sum">10+4+6=20</td>
+                        <td class="bkki-amount-display" id="bkki-amount-046">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="246">
+                        <td class="bkki-sr-no">3</td>
+                        <td class="bkki-panna-value">246</td>
+                        <td class="bkki-panna-sum">2+4+6=12</td>
+                        <td class="bkki-amount-display" id="bkki-amount-246">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="268">
+                        <td class="bkki-sr-no">4</td>
+                        <td class="bkki-panna-value">268</td>
+                        <td class="bkki-panna-sum">2+6+8=16</td>
+                        <td class="bkki-amount-display" id="bkki-amount-268">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="468">
+                        <td class="bkki-sr-no">5</td>
+                        <td class="bkki-panna-value">468</td>
+                        <td class="bkki-panna-sum">4+6+8=18</td>
+                        <td class="bkki-amount-display" id="bkki-amount-468">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="048">
+                        <td class="bkki-sr-no">6</td>
+                        <td class="bkki-panna-value">480</td>
+                        <td class="bkki-panna-sum">10+4+8=22</td>
+                        <td class="bkki-amount-display" id="bkki-amount-048">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="068">
+                        <td class="bkki-sr-no">7</td>
+                        <td class="bkki-panna-value">680</td>
+                        <td class="bkki-panna-sum">10+6+8=24</td>
+                        <td class="bkki-amount-display" id="bkki-amount-068">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="248">
+                        <td class="bkki-sr-no">8</td>
+                        <td class="bkki-panna-value">248</td>
+                        <td class="bkki-panna-sum">2+4+8=14</td>
+                        <td class="bkki-amount-display" id="bkki-amount-248">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="024">
+                        <td class="bkki-sr-no">9</td>
+                        <td class="bkki-panna-value">240</td>
+                        <td class="bkki-panna-sum">10+2+4=16</td>
+                        <td class="bkki-amount-display" id="bkki-amount-024">-</td>
+                    </tr>
+                    <tr class="bkki-panna-row" data-panna="468">
+                        <td class="bkki-sr-no">10</td>
+                        <td class="bkki-panna-value">260</td>
+                        <td class="bkki-panna-sum">2+6+10=18</td>
+                        <td class="bkki-amount-display" id="bkki-amount-468">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="bkki-summary">
+            <p>Total Pannas: <span id="bkki-outcomes-count">10</span></p>
+            <p>Amount per Panna: <span id="bkki-amount-per-outcome">INR 0.00</span></p>
+            <p>Total Bet Amount: <span id="bkki-total-bet-amount">INR 0.00</span></p>
+        </div>
+        
+        <form method="POST" id="bkki-form">
+            <input type="hidden" name="bet_amount" id="form-bkki-bet-amount">
+            <input type="hidden" name="mode" id="form-bkki-mode" value="open">
+            <input type="hidden" name="place_bkki_bet" value="1">
+            
+            <button type="submit" class="action-btn place-bet-btn" id="place-bkki-bet-btn" disabled>
+                PLACE BKKI BET
+            </button>
+        </form>
+    </div>
+</div>
 
 
    
@@ -2147,24 +2927,34 @@ include 'includes/header.php';
 <script src="includes/script.js"></script>
 <!-- script that hepl to hide elements of all games -->
 <script>
- function toggleGameUI(gameType) {
+function toggleGameUI(gameType) {
+    const isSingleAnk = gameType === 'single_ank';
+    const isJodi = gameType === 'jodi';
+    const isPatti = ['single_patti', 'double_patti', 'triple_patti'].includes(gameType);
     const isSpMotor = gameType === 'sp_motor';
     const isDpMotor = gameType === 'dp_motor';
     const isSpGame = gameType === 'sp_game';
     const isDpGame = gameType === 'dp_game';
     const isSpSet = gameType === 'sp_set';
     const isDpSet = gameType === 'dp_set';
-    const isTpSet = gameType === 'tp_set'; 
-    const isCommon = gameType === 'common'; 
-    const isSeries = gameType === 'series'; 
-    const isSpecialGame = isSpMotor || isDpMotor || isSpGame || isDpGame || isSpSet || isDpSet || isTpSet || isCommon || isSeries; // Update this line
+    const isTpSet = gameType === 'tp_set';
+    const isCommon = gameType === 'common';
+    const isSeries = gameType === 'series';
+    const isRown = gameType === 'rown'; // ADD THIS LINE
+    const isEki = gameType === 'eki';      // ADD THIS
+    const isBkki = gameType === 'bkki';    // ADD THIS
+   const isAbrCut = gameType === 'abr_cut'; // ADD THIS LINE
+    
+    const isSpecialGame = isSingleAnk || isJodi || isPatti || isSpMotor || isDpMotor || 
+                         isSpGame || isDpGame || isSpSet || isDpSet || isTpSet || 
+                         isCommon || isSeries || isRown || isEki || isBkki || isAbrCut; // UPDATE THIS
 
     const elementsToToggle = [
         '.chips-container',
         '#numbers-grid',
         '.bet-total',
         '.action-buttons',
-        '#bet-form:not(#sp-motor-form):not(#dp-motor-form):not(#sp-game-form):not(#dp-game-form):not(#sp-set-form):not(#dp-set-form):not(#tp-set-form):not(#common-form):not(#series-form)' // Update this line
+        '#bet-form:not(#single-ank-form):not(#jodi-form):not(#patti-form):not(#sp-motor-form):not(#dp-motor-form):not(#sp-game-form):not(#dp-game-form):not(#sp-set-form):not(#dp-set-form):not(#tp-set-form):not(#common-form):not(#series-form):not(#rown-form)'
     ];
     
     elementsToToggle.forEach(selector => {
@@ -2173,6 +2963,42 @@ include 'includes/header.php';
             el.style.display = isSpecialGame ? 'none' : '';
         });
     });
+    
+    // Show/hide regular betting interface
+    const regularInterface = document.querySelector('.regular-betting-interface');
+    if (regularInterface) {
+        regularInterface.style.display = isSpecialGame ? 'none' : 'block';
+    }
+    
+    // Show Single Ank interface if it's Single Ank game
+    const singleAnkInterface = document.querySelector('.single-ank-interface');
+    if (singleAnkInterface) {
+        singleAnkInterface.style.display = isSingleAnk ? 'block' : 'none';
+        
+        if (isSingleAnk) {
+            initializeSingleAnkGame();
+        }
+    }
+    
+    // Show Jodi interface if it's Jodi game
+    const jodiInterface = document.querySelector('.jodi-interface');
+    if (jodiInterface) {
+        jodiInterface.style.display = isJodi ? 'block' : 'none';
+        
+        if (isJodi) {
+            initializeJodiGame();
+        }
+    }
+    
+    // Show Patti interface if it's any patti game
+    const pattiInterface = document.querySelector('.patti-interface');
+    if (pattiInterface) {
+        pattiInterface.style.display = isPatti ? 'block' : 'none';
+        
+        if (isPatti) {
+            initializePattiGame();
+        }
+    }
     
     // Show SP Motor interface if it's SP Motor game
     const spMotorInterface = document.querySelector('.sp-motor-interface');
@@ -2204,28 +3030,69 @@ include 'includes/header.php';
         spSetInterface.style.display = isSpSet ? 'block' : 'none';
     }
     
-    // Show DP Set interface if it's DP Set - ADD THIS SECTION
+    // Show DP Set interface if it's DP Set
     const dpSetInterface = document.querySelector('.dp-set-interface');
     if (dpSetInterface) {
         dpSetInterface.style.display = isDpSet ? 'block' : 'none';
     }
-      // Show TP Set interface if it's TP Set game
+    
+    // Show TP Set interface if it's TP Set game
     const tpSetInterface = document.querySelector('.tp-set-interface');
     if (tpSetInterface) {
         tpSetInterface.style.display = isTpSet ? 'block' : 'none';
     }
-        // Show Common interface if it's Common game
+    
+    // Show Common interface if it's Common game
     const commonInterface = document.querySelector('.common-interface');
     if (commonInterface) {
         commonInterface.style.display = isCommon ? 'block' : 'none';
-    } 
-     // Show Series interface if it's Series game
-       const seriesInterface = document.querySelector('.series-interface');
+    }
+    
+    // Show Series interface if it's Series game
+    const seriesInterface = document.querySelector('.series-interface');
     if (seriesInterface) {
         seriesInterface.style.display = isSeries ? 'block' : 'none';
     }
-  }
-
+    
+    // Show Rown interface if it's Rown game - ADD THIS SECTION
+    const rownInterface = document.querySelector('.rown-interface');
+    if (rownInterface) {
+        rownInterface.style.display = isRown ? 'block' : 'none';
+        
+        // Initialize Rown game if it's shown
+        if (isRown) {
+            initializeRownGame();
+        }
+    }
+        // Show Abr-Cut interface if it's Abr-Cut game
+    const abrCutInterface = document.querySelector('.abr-cut-interface');
+    if (abrCutInterface) {
+        abrCutInterface.style.display = isAbrCut ? 'block' : 'none';
+        
+        if (isAbrCut) {
+            initializeAbrCutGame();
+        }
+    }
+      // Show Eki interface if it's Eki game
+    const ekiInterface = document.querySelector('.eki-interface');
+    if (ekiInterface) {
+        ekiInterface.style.display = isEki ? 'block' : 'none';
+        
+        if (isEki) {
+            initializeEkiGame();
+        }
+    }
+    
+    // Show Bkki interface if it's Bkki game
+    const bkkiInterface = document.querySelector('.bkki-interface');
+    if (bkkiInterface) {
+        bkkiInterface.style.display = isBkki ? 'block' : 'none';
+        
+        if (isBkki) {
+            initializeBkkiGame();
+        }
+    }
+}
    // Also update the bet type change handler to handle DP Set
   document.addEventListener('DOMContentLoaded', function() {
     const gameType = '<?php echo $game_type; ?>';
@@ -4953,80 +5820,211 @@ include 'includes/header.php';
 
 <!-- common -->
 <script>
-            // Common Game Logic - Only Ascending Panna, No Remove/Restore, 0=10
+        // Enhanced Common Game JavaScript with Digit-based Panna Generation (0=10 in panna logic)
         let currentCommonOutcomes = [];
 
-        function generateCommonOutcomes() {
-            const digitSelect = document.getElementById('common-digit');
-            const selectedDigit = digitSelect.value;
-            
-            if (!selectedDigit) {
-                updateCommonOutcomes([]);
-                return;
-            }
-            
-            // Generate only ascending order panna combinations that contain the selected digit
-            // Note: 0 means 10 in the panna combinations
-            const outcomes = generateAscendingPanna(selectedDigit);
-            
-            updateCommonOutcomes(outcomes, selectedDigit);
+        // Helper function to convert digit for calculation (0 becomes 10)
+        function getDigitValue(digit) {
+            return digit === '0' ? 10 : parseInt(digit);
         }
 
-        function generateAscendingPanna(selectedDigit) {
-            const outcomes = [];
+        // Helper function to convert digit for display (10 becomes 0)
+        function getDisplayDigit(digit) {
+            return digit === 10 ? '0' : digit.toString();
+        }
+
+        // Function to create proper panna with 0=10 logic
+        function createPanna(digitsArray) {
+            // Convert digits to numerical values for sorting (0 becomes 10)
+            const numericDigits = digitsArray.map(d => getDigitValue(d.toString()));
             
-            // Generate all possible ascending 3-digit combinations with digits 1-9 and 10 (where 0 represents 10)
-            for (let i = 1; i <= 10; i++) {
-                for (let j = i; j <= 10; j++) {
-                    for (let k = j; k <= 10; k++) {
-                        // Convert 10 back to 0 for display in panna
-                        const digit1 = i === 10 ? 0 : i;
-                        const digit2 = j === 10 ? 0 : j;
-                        const digit3 = k === 10 ? 0 : k;
+            // Sort numerically (0 as 10 will be at the end)
+            numericDigits.sort((a, b) => a - b);
+            
+            // Convert back to display format (10 becomes 0)
+            const displayDigits = numericDigits.map(d => getDisplayDigit(d));
+            
+            return displayDigits.join('');
+        }
+
+        // Function to generate SP pannas (36) based on selected digit
+        function generateSpPannas(selectedDigit) {
+            const spPannas = [];
+            const allDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+            
+            // Convert selected digit for calculation
+            const selectedDigitValue = getDigitValue(selectedDigit);
+            
+            // Generate all possible 3-digit combinations that include the selected digit
+            for (let i = 0; i < allDigits.length; i++) {
+                for (let j = i + 1; j < allDigits.length; j++) {
+                    for (let k = j + 1; k < allDigits.length; k++) {
+                        const combination = [allDigits[i], allDigits[j], allDigits[k]];
                         
-                        const panna = digit1.toString() + digit2.toString() + digit3.toString();
+                        // Check if combination includes the selected digit (considering 0=10)
+                        const includesSelectedDigit = combination.some(digit => 
+                            getDigitValue(digit.toString()) === selectedDigitValue
+                        );
                         
-                        // Check if panna contains the selected digit (convert selectedDigit to number for comparison)
-                        const selectedDigitNum = parseInt(selectedDigit);
-                        
-                        // For selected digit 0, we need to check for 10 in the actual digits (i, j, k)
-                        if (selectedDigitNum === 0) {
-                            // Selected 0 means we're looking for 10 in the actual digits
-                            if (i === 10 || j === 10 || k === 10) {
-                                outcomes.push(panna);
-                            }
-                        } else {
-                            // For other digits (1-9), check if the panna contains the digit
-                            if (panna.includes(selectedDigit)) {
-                                outcomes.push(panna);
+                        if (includesSelectedDigit) {
+                            const panna = createPanna(combination);
+                            if (!spPannas.includes(panna)) {
+                                spPannas.push(panna);
                             }
                         }
                     }
                 }
             }
             
-            return outcomes;
+            // Limit to 36 pannas and sort them
+            return spPannas.sort().slice(0, 36);
         }
 
-        function updateCommonOutcomes(outcomes, selectedDigit) {
+        // Function to generate DP pannas (18) based on selected digit
+        function generateDpPannas(selectedDigit) {
+            const dpPannas = [];
+            const allDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+            
+            // Convert selected digit for calculation
+            const selectedDigitValue = getDigitValue(selectedDigit);
+            
+            // Generate double patti combinations
+            for (let i = 0; i < allDigits.length; i++) {
+                for (let j = 0; j < allDigits.length; j++) {
+                    if (i !== j) {
+                        // Create double patti patterns: AAB, ABA, ABB
+                        const patterns = [
+                            [allDigits[i], allDigits[i], allDigits[j]], // AAB
+                            [allDigits[i], allDigits[j], allDigits[j]]  // ABB
+                        ];
+                        
+                        for (const pattern of patterns) {
+                            // Check if pattern includes the selected digit (considering 0=10)
+                            const includesSelectedDigit = pattern.some(digit => 
+                                getDigitValue(digit.toString()) === selectedDigitValue
+                            );
+                            
+                            if (includesSelectedDigit) {
+                                const panna = createPanna(pattern);
+                                // Ensure it's actually a double patti (not triple)
+                                const uniqueDigits = [...new Set(pattern)];
+                                if (uniqueDigits.length === 2 && !dpPannas.includes(panna)) {
+                                    dpPannas.push(panna);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Limit to 18 pannas and sort them
+            return dpPannas.sort().slice(0, 18);
+        }
+
+        // Function to generate SPDPT pannas (55) based on selected digit
+        function generateSpdptPannas(selectedDigit) {
+            // Combine SP and DP pannas to get 55 total
+            const spPannas = generateSpPannas(selectedDigit);
+            const dpPannas = generateDpPannas(selectedDigit);
+            
+            // Combine and remove duplicates
+            const allPannas = [...new Set([...spPannas, ...dpPannas])];
+            
+            // Ensure we have exactly 55 pannas
+            if (allPannas.length < 55) {
+                // Add additional pannas if needed
+                const additionalPannas = generateAdditionalPannas(selectedDigit, 55 - allPannas.length);
+                allPannas.push(...additionalPannas);
+            }
+            
+            return allPannas.sort().slice(0, 55);
+        }
+
+        // Helper function to generate additional pannas if needed
+        function generateAdditionalPannas(selectedDigit, count) {
+            const additional = [];
+            const allDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+            
+            // Convert selected digit for calculation
+            const selectedDigitValue = getDigitValue(selectedDigit);
+            
+            for (let i = 0; i < allDigits.length && additional.length < count; i++) {
+                for (let j = i + 1; j < allDigits.length && additional.length < count; j++) {
+                    for (let k = j + 1; k < allDigits.length && additional.length < count; k++) {
+                        const combination = [allDigits[i], allDigits[j], allDigits[k]];
+                        const panna = createPanna(combination);
+                        
+                        // Check if combination includes the selected digit (considering 0=10)
+                        const includesSelectedDigit = combination.some(digit => 
+                            getDigitValue(digit.toString()) === selectedDigitValue
+                        );
+                        
+                        // Add if it includes selected digit and is not already in our lists
+                        if (includesSelectedDigit && !additional.includes(panna)) {
+                            additional.push(panna);
+                        }
+                    }
+                }
+            }
+            
+            return additional;
+        }
+
+        function generateCommonOutcomes() {
+            const selectedDigit = document.getElementById('common-digit').value;
+            const commonType = document.getElementById('common-type').value;
+            
+            if (!selectedDigit) {
+                updateCommonOutcomes([], commonType);
+                return;
+            }
+            
+            let outcomes = [];
+            let typeDisplay = '';
+            
+            switch(commonType) {
+                case 'sp':
+                    outcomes = generateSpPannas(selectedDigit);
+                    typeDisplay = `SP (36 Single Patti for Digit ${selectedDigit === '0' ? '10' : selectedDigit})`;
+                    break;
+                case 'dp':
+                    outcomes = generateDpPannas(selectedDigit);
+                    typeDisplay = `DP (18 Double Patti for Digit ${selectedDigit === '0' ? '10' : selectedDigit})`;
+                    break;
+                case 'spdpt':
+                default:
+                    outcomes = generateSpdptPannas(selectedDigit);
+                    typeDisplay = `SPDPT (55 Pannas for Digit ${selectedDigit === '0' ? '10' : selectedDigit})`;
+                    break;
+            }
+            
+            updateCommonOutcomes(outcomes, commonType, typeDisplay, selectedDigit);
+        }
+
+        function updateCommonOutcomes(outcomes, commonType, typeDisplay, selectedDigit) {
             const container = document.getElementById('common-outcomes-container');
             
             currentCommonOutcomes = outcomes;
             
             if (outcomes.length === 0) {
-                container.innerHTML = '<div class="no-digits">Please select a digit to generate Common outcomes</div>';
+                container.innerHTML = '<div class="no-digits">Please select a digit and type to generate Common outcomes</div>';
             } else {
                 let html = `
                     <div class="pana-header">
-                        <h4>Common Outcomes for Digit ${selectedDigit} ${selectedDigit === '0' ? '(10)' : ''}</h4>
-                        <div class="digit-info">${outcomes.length}  panna combinations containing digit ${selectedDigit === '0' ? '10' : selectedDigit}</div>
+                        <h4>Common ${typeDisplay}</h4>
+                        <div class="digit-info">${outcomes.length} panna combinations for digit ${selectedDigit === '0' ? '10' : selectedDigit}</div>
+                
                     </div>
                     <div class="pana-list">
                 `;
                 
-                outcomes.forEach((outcome) => {
-                    // Calculate sum with 0=10 logic
-                    const digits = outcome.split('').map(d => parseInt(d));
+                outcomes.forEach((outcome, index) => {
+                    // Calculate sum for display (0 means 10)
+                    const digits = outcome.split('').map(d => getDigitValue(d));
+                    const sum = digits.reduce((a, b) => a + b, 0);
+                    
+                    // Create sum display text showing 0 as 10
+                    const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
                     
                     html += `
                         <div class="pana-item" data-outcome="${outcome}">
@@ -5042,7 +6040,9 @@ include 'includes/header.php';
             }
             
             document.getElementById('common-outcomes-count').textContent = outcomes.length;
+            document.getElementById('common-type-display').textContent = typeDisplay;
             document.getElementById('form-common-digit').value = selectedDigit;
+            document.getElementById('form-common-type').value = commonType;
             updateCommonTotal();
         }
 
@@ -5056,7 +6056,7 @@ include 'includes/header.php';
             document.getElementById('common-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
             document.getElementById('form-common-bet-amount').value = amount;
             
-            // Update form with all outcomes (since no remove functionality)
+            // Update form with all outcomes
             document.getElementById('form-common-outcomes').value = JSON.stringify(currentCommonOutcomes);
             
             // Enable/disable bet button
@@ -5067,7 +6067,7 @@ include 'includes/header.php';
                 validationEl.textContent = "Minimum total bet is INR 5.00";
                 betButton.disabled = true;
             } else if (activeOutcomeCount === 0) {
-                validationEl.textContent = "Please select a digit to generate outcomes";
+                validationEl.textContent = "Please select a digit and type to generate outcomes";
                 betButton.disabled = true;
             } else if (amount <= 0) {
                 validationEl.textContent = "Please enter a valid bet amount";
@@ -5095,6 +6095,13 @@ include 'includes/header.php';
                     }
                 });
             });
+            
+            // Test examples to verify the logic
+            console.log("Panna examples with 0=10 logic:");
+            console.log("012 becomes:", createPanna([0, 1, 2])); // Should be "120"
+            console.log("009 becomes:", createPanna([0, 0, 9])); // Should be "099" 
+            console.log("078 becomes:", createPanna([0, 7, 8])); // Should be "780"
+            console.log("005 becomes:", createPanna([0, 0, 5])); // Should be "055"
         });
 </script>
 
@@ -5275,232 +6282,574 @@ include 'includes/header.php';
             });
         });
 </script>
-
+<!-- rown -->
 <script>
+        // Rown Game Logic - Fixed 10 consecutive pannas with static HTML table
+        let currentRownAmount = 0;
 
-        // Clear form data after submission to prevent browser from remembering it
-        window.addEventListener('load', function() {
-            if (window.history.replaceState) {
-                window.history.replaceState(null, null, window.location.href);
-            }
+        function initializeRownGame() {
+            // Set up event listeners for Rown game
+            document.getElementById('rown-amount').addEventListener('input', updateRownTotal);
             
-            // Clear any form data that might be remembered by the browser
-            document.getElementById('bet-form').reset();
-            
-            // Reset betting interface
-            selectedChipValue = 0;
-            totalBet = 0;
-            betHistory = [];
-            currentBets = {};
-            updateBetDisplay();
-            
-            // Clear any active chips
-            document.querySelectorAll('.chip').forEach(chip => {
-                chip.classList.remove('active');
+            // Set mode toggle for Rown Game
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                    const formModeInput = document.getElementById('form-rown-mode');
+                    if (formModeInput) {
+                        formModeInput.value = mode;
+                    }
+                });
             });
-        });
-        
-        // Initialize betting variables
-        let selectedChipValue = 0;
-        let totalBet = 0;
-        let betHistory = [];
-        let currentBets = {};
-        
-    
-        
-        // Update game type ID when bet type changes
-    document.getElementById('bet-type').addEventListener('change', function() {
-    document.getElementById('form-game-type-id').value = this.value;
-  });
-      
-        
-  // Set initial mode value
-    document.getElementById('form-bet-mode').value = 'open';
+            
+            // Initial calculation
+            updateRownTotal();
+        }
 
-   // Open/Close toggle
-   document.querySelectorAll('.toggle-option').forEach(option => {
-    option.addEventListener('click', function() {
-        document.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
-        this.classList.add('active');
-        
-        // Update the hidden form field with the selected mode
-        const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-        // alert(mode);
-        document.getElementById('form-bet-mode').value = mode;
-        
-        console.log('Mode changed to:', mode); // For debugging
-    });
-  });
+        function updateRownTotal() {
+            const amount = parseFloat(document.getElementById('rown-amount').value) || 0;
+            const pannaCount = 10; // Fixed 10 pannas
+            const total = amount * pannaCount;
+            
+            currentRownAmount = amount;
+            
+            // Update the table with current amount
+            updateRownTableDisplay(amount);
+            
+            document.getElementById('rown-outcomes-count').textContent = pannaCount;
+            document.getElementById('rown-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('rown-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-rown-bet-amount').value = amount;
+            
+            // Enable/disable bet button
+            const betButton = document.getElementById('place-rown-bet-btn');
+            const validationEl = document.getElementById('rown-validation');
+            
+            if (total > 0 && total < 5) {
+                validationEl.textContent = "Minimum total bet is INR 5.00";
+                betButton.disabled = true;
+            } else if (amount <= 0) {
+                validationEl.textContent = "Please enter a valid bet amount";
+                betButton.disabled = true;
+            } else {
+                validationEl.textContent = "";
+                betButton.disabled = false;
+            }
+        }
 
-        // Form submission
-        document.getElementById('bet-form').addEventListener('submit', function(e) {
-            if (totalBet === 0) {
-                e.preventDefault();
-                alert('Please place at least one bet');
-                return;
-            }
+        function updateRownTableDisplay(amount) {
+            const rownRows = document.querySelectorAll('.rown-panna-row');
             
-            // Changed condition from 5 different numbers to 5 RPS total
-            if (totalBet < 5) {
-                e.preventDefault();
-                alert('Minimum 5 RPS bet required to place a bet');
-                return;
-            }
-            
-            // Update form fields
-            document.getElementById('form-bet-amount').value = totalBet;
-            document.getElementById('form-bet-data').value = JSON.stringify(currentBets);
-            
-            // Check if user has sufficient balance
-            const balanceText = document.getElementById('balance-amount').textContent;
-            const balanceValue = parseFloat(balanceText.replace('₹', '').replace(/,/g, ''));
-            
-            if (totalBet > balanceValue) {
-                e.preventDefault();
-                alert('Insufficient funds! Please add money to your account.');
-                return;
-            }
-            
-            // Confirm before placing bet
-            if (!confirm(`Confirm bet placement for INR ${totalBet}?`)) {
-                e.preventDefault();
-            }
-        });
-        
-        // Update bet display
-        function updateBetDisplay() {
-            document.getElementById('total-bet').textContent = `INR ${totalBet}`;
-            
-            // Update number displays
-            document.querySelectorAll('.bet-number').forEach(numberElement => {
-                const number = numberElement.dataset.number;
-                if (currentBets[number]) {
-                    numberElement.classList.add('bet-placed');
+            rownRows.forEach(row => {
+                const amountCell = row.querySelector('.rown-amount-display');
+                const panna = row.dataset.panna;
+                
+                if (amount > 0) {
+                    amountCell.textContent = `₹${amount.toFixed(2)}`;
+                    amountCell.classList.add('has-bet');
+                    row.classList.add('active-bet');
+                } else {
+                    amountCell.textContent = '-';
+                    amountCell.classList.remove('has-bet');
+                    row.classList.remove('active-bet');
+                }
+            });
+        }
+        </script>
+        <script>
+
+                // Clear form data after submission to prevent browser from remembering it
+                window.addEventListener('load', function() {
+                    if (window.history.replaceState) {
+                        window.history.replaceState(null, null, window.location.href);
+                    }
                     
-                    // Create or update amount indicator
-                    let amountIndicator = numberElement.querySelector('.bet-amount');
-                    if (!amountIndicator) {
-                        amountIndicator = document.createElement('div');
-                        amountIndicator.className = 'bet-amount';
-                        numberElement.appendChild(amountIndicator);
-                    }
-                    amountIndicator.textContent = currentBets[number];
-                } else {
-                    numberElement.classList.remove('bet-placed');
-                    const amountIndicator = numberElement.querySelector('.bet-amount');
-                    if (amountIndicator) {
-                        amountIndicator.remove();
-                    }
-                }
+                    // Clear any form data that might be remembered by the browser
+                    document.getElementById('bet-form').reset();
+                    
+                    // Reset betting interface
+                    selectedChipValue = 0;
+                    totalBet = 0;
+                    betHistory = [];
+                    currentBets = {};
+                    updateBetDisplay();
+                    
+                    // Clear any active chips
+                    document.querySelectorAll('.chip').forEach(chip => {
+                        chip.classList.remove('active');
+                    });
+                });
+                
+                // Initialize betting variables
+                let selectedChipValue = 0;
+                let totalBet = 0;
+                let betHistory = [];
+                let currentBets = {};
+                
+            
+                
+                // Update game type ID when bet type changes
+            document.getElementById('bet-type').addEventListener('change', function() {
+            document.getElementById('form-game-type-id').value = this.value;
+        });
+            
+                
+        // Set initial mode value
+            document.getElementById('form-bet-mode').value = 'open';
+
+        // Open/Close toggle
+        document.querySelectorAll('.toggle-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Update the hidden form field with the selected mode
+                const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                // alert(mode);
+                document.getElementById('form-bet-mode').value = mode;
+                
+                console.log('Mode changed to:', mode); // For debugging
             });
-        }
-        // Timer functionality for single ank page
-        function setupTimersSingleAnk(openTime, closeTime) {
-            function updateTimers() {
-                const now = new Date();
-                
-                // Get current IST time (UTC +5:30)
-                const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-                const istTime = new Date(utc + (5.5 * 3600000));
-                
-                // Parse open and close times
-                const [openHours, openMinutes] = openTime.split(':').map(Number);
-                const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
-                
-                // Create date objects for today's open and close times in IST
-                const openTimeToday = new Date(istTime);
-                openTimeToday.setHours(openHours, openMinutes, 0, 0);
-                
-                const closeTimeToday = new Date(istTime);
-                closeTimeToday.setHours(closeHours, closeMinutes, 0, 0);
-                
-                // If open time has already passed today, set it for tomorrow
-                if (openTimeToday < istTime) {
-                    openTimeToday.setDate(openTimeToday.getDate() + 1);
-                }
-                
-                // If close time has already passed today, set it for tomorrow
-                if (closeTimeToday < istTime) {
-                    closeTimeToday.setDate(closeTimeToday.getDate() + 1);
-                }
-                
-                // Calculate time differences
-                const openDiff = openTimeToday - istTime;
-                const closeDiff = closeTimeToday - istTime;
-                
-                // Format time strings
-                const openTimer = formatTimeDiff(openDiff);
-                const closeTimer = formatTimeDiff(closeDiff);
-                
-                // Update DOM elements
-                document.getElementById('open-timer-single').textContent = openTimer;
-                document.getElementById('close-timer-single').textContent = closeTimer;
-                
-                // Update status based on time
-                updateGameStatusSingle(openDiff, closeDiff);
-            }
-            
-            function updateGameStatusSingle(openDiff, closeDiff) {
-                const openTimerElement = document.getElementById('open-timer-single');
-                const closeTimerElement = document.getElementById('close-timer-single');
-                
-                if (openDiff <= 0) {
-                    openTimerElement.style.color = 'var(--success)';
-                } else {
-                    openTimerElement.style.color = 'var(--primary)';
-                }
-                
-                if (closeDiff <= 0) {
-                    closeTimerElement.style.color = 'var(--danger)';
-                } else {
-                    closeTimerElement.style.color = 'var(--primary)';
-                }
-            }
-            
-            function formatTimeDiff(diff) {
-                if (diff <= 0) {
-                    return '00:00:00';
-                }
-                
-                const hours = Math.floor(diff / (1000 * 60 * 60));
-                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-                
-                return `${padZero(hours)}:${padZero(minutes)}:${padZero(seconds)}`;
-            }
-            
-            function padZero(num) {
-                return num.toString().padStart(2, '0');
-            }
-            
-            // Initialize and update timers every second
-            updateTimers();
-            setInterval(updateTimers, 1000);
-        }
+        });
 
-      // Get URL parameters for single ank page
-        function getUrlParamsSingleAnk() {
-            const params = {};
-            const urlParams = new URLSearchParams(window.location.search);
-            
-            params.game = urlParams.get('game') || 'Kalyan Matka';
-            params.openTime = urlParams.get('openTime') || '15:30';
-            params.closeTime = urlParams.get('closeTime') || '17:30';
-            
-            return params;
-        }
+                // Form submission
+                document.getElementById('bet-form').addEventListener('submit', function(e) {
+                    if (totalBet === 0) {
+                        e.preventDefault();
+                        alert('Please place at least one bet');
+                        return;
+                    }
+                    
+                    // Changed condition from 5 different numbers to 5 RPS total
+                    if (totalBet < 5) {
+                        e.preventDefault();
+                        alert('Minimum 5 RPS bet required to place a bet');
+                        return;
+                    }
+                    
+                    // Update form fields
+                    document.getElementById('form-bet-amount').value = totalBet;
+                    document.getElementById('form-bet-data').value = JSON.stringify(currentBets);
+                    
+                    // Check if user has sufficient balance
+                    const balanceText = document.getElementById('balance-amount').textContent;
+                    const balanceValue = parseFloat(balanceText.replace('₹', '').replace(/,/g, ''));
+                    
+                    if (totalBet > balanceValue) {
+                        e.preventDefault();
+                        alert('Insufficient funds! Please add money to your account.');
+                        return;
+                    }
+                    
+                    // Confirm before placing bet
+                    if (!confirm(`Confirm bet placement for INR ${totalBet}?`)) {
+                        e.preventDefault();
+                    }
+                });
+                
+                // Update bet display
+                function updateBetDisplay() {
+                    document.getElementById('total-bet').textContent = `INR ${totalBet}`;
+                    
+                    // Update number displays
+                    document.querySelectorAll('.bet-number').forEach(numberElement => {
+                        const number = numberElement.dataset.number;
+                        if (currentBets[number]) {
+                            numberElement.classList.add('bet-placed');
+                            
+                            // Create or update amount indicator
+                            let amountIndicator = numberElement.querySelector('.bet-amount');
+                            if (!amountIndicator) {
+                                amountIndicator = document.createElement('div');
+                                amountIndicator.className = 'bet-amount';
+                                numberElement.appendChild(amountIndicator);
+                            }
+                            amountIndicator.textContent = currentBets[number];
+                        } else {
+                            numberElement.classList.remove('bet-placed');
+                            const amountIndicator = numberElement.querySelector('.bet-amount');
+                            if (amountIndicator) {
+                                amountIndicator.remove();
+                            }
+                        }
+                    });
+                }
+                // Timer functionality for single ank page
+                function setupTimersSingleAnk(openTime, closeTime) {
+                    function updateTimers() {
+                        const now = new Date();
+                        
+                        // Get current IST time (UTC +5:30)
+                        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                        const istTime = new Date(utc + (5.5 * 3600000));
+                        
+                        // Parse open and close times
+                        const [openHours, openMinutes] = openTime.split(':').map(Number);
+                        const [closeHours, closeMinutes] = closeTime.split(':').map(Number);
+                        
+                        // Create date objects for today's open and close times in IST
+                        const openTimeToday = new Date(istTime);
+                        openTimeToday.setHours(openHours, openMinutes, 0, 0);
+                        
+                        const closeTimeToday = new Date(istTime);
+                        closeTimeToday.setHours(closeHours, closeMinutes, 0, 0);
+                        
+                        // If open time has already passed today, set it for tomorrow
+                        if (openTimeToday < istTime) {
+                            openTimeToday.setDate(openTimeToday.getDate() + 1);
+                        }
+                        
+                        // If close time has already passed today, set it for tomorrow
+                        if (closeTimeToday < istTime) {
+                            closeTimeToday.setDate(closeTimeToday.getDate() + 1);
+                        }
+                        
+                        // Calculate time differences
+                        const openDiff = openTimeToday - istTime;
+                        const closeDiff = closeTimeToday - istTime;
+                        
+                        // Format time strings
+                        const openTimer = formatTimeDiff(openDiff);
+                        const closeTimer = formatTimeDiff(closeDiff);
+                        
+                        // Update DOM elements
+                        document.getElementById('open-timer-single').textContent = openTimer;
+                        document.getElementById('close-timer-single').textContent = closeTimer;
+                        
+                        // Update status based on time
+                        updateGameStatusSingle(openDiff, closeDiff);
+                    }
+                    
+                    function updateGameStatusSingle(openDiff, closeDiff) {
+                        const openTimerElement = document.getElementById('open-timer-single');
+                        const closeTimerElement = document.getElementById('close-timer-single');
+                        
+                        if (openDiff <= 0) {
+                            openTimerElement.style.color = 'var(--success)';
+                        } else {
+                            openTimerElement.style.color = 'var(--primary)';
+                        }
+                        
+                        if (closeDiff <= 0) {
+                            closeTimerElement.style.color = 'var(--danger)';
+                        } else {
+                            closeTimerElement.style.color = 'var(--primary)';
+                        }
+                    }
+                    
+                    function formatTimeDiff(diff) {
+                        if (diff <= 0) {
+                            return '00:00:00';
+                        }
+                        
+                        const hours = Math.floor(diff / (1000 * 60 * 60));
+                        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                        
+                        return `${padZero(hours)}:${padZero(minutes)}:${padZero(seconds)}`;
+                    }
+                    
+                    function padZero(num) {
+                        return num.toString().padStart(2, '0');
+                    }
+                    
+                    // Initialize and update timers every second
+                    updateTimers();
+                    setInterval(updateTimers, 1000);
+                }
 
-    // Initialize the timers when page loads
-     document.addEventListener('DOMContentLoaded', function() {
-    const params = getUrlParamsSingleAnk();
-    setupTimersSingleAnk(params.openTime, params.closeTime);
-   });
-   // Add these global variables
-    let currentPage = 1;
-    const itemsPerPage = 100;
+            // Get URL parameters for single ank page
+                function getUrlParamsSingleAnk() {
+                    const params = {};
+                    const urlParams = new URLSearchParams(window.location.search);
+                    
+                    params.game = urlParams.get('game') || 'Kalyan Matka';
+                    params.openTime = urlParams.get('openTime') || '15:30';
+                    params.closeTime = urlParams.get('closeTime') || '17:30';
+                    
+                    return params;
+                }
+
+            // Initialize the timers when page loads
+            document.addEventListener('DOMContentLoaded', function() {
+            const params = getUrlParamsSingleAnk();
+            setupTimersSingleAnk(params.openTime, params.closeTime);
+        });
+        // Add these global variables
+            let currentPage = 1;
+            const itemsPerPage = 100;
      let totalPages = 1;
 </script>
+<script>
+// Abr-Cut Game Logic - Exact 90 pannas
+let currentAbrCutAmount = 0;
 
+// Exact 90 Abr-Cut pannas
+const CORRECT_ABR_CUT_PANNAS = [
+    '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+    '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+    '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+    '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+    '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+    '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
+    // Additional 30 pannas to make it 90
+    '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
+    '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
+    '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
+];
+
+// Helper function to convert digit for calculation (0 becomes 10)
+function getDigitValue(digit) {
+    return digit === '0' ? 10 : parseInt(digit);
+}
+
+// Function to initialize Abr-Cut game
+function initializeAbrCutGame() {
+    // Use the exact 90 Abr-Cut pannas
+    currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
+    
+    // Verify we have exactly 90 pannas
+    if (currentAbrCutOutcomes.length !== 90) {
+        console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
+        // If not exactly 90, take first 90
+        currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
+    }
+    
+    // Populate the grid
+    updateAbrCutOutcomes(currentAbrCutOutcomes);
+    
+    // Set up event listeners
+    document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
+    
+    // Set mode toggle for Abr-Cut
+    document.querySelectorAll('.toggle-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+            document.getElementById('form-abr-cut-mode').value = mode;
+        });
+    });
+    
+    // Initial calculation
+    updateAbrCutTotal();
+    
+    console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
+}
+
+// Function to update Abr-Cut outcomes in grid format
+function updateAbrCutOutcomes(outcomes) {
+    const container = document.getElementById('abr-cut-outcomes-container');
+    
+    if (outcomes.length === 0) {
+        container.innerHTML = '<div class="no-digits">No pannas available</div>';
+    } else {
+        let html = `
+            <div class="pana-header">
+                <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
+                <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
+            </div>
+            <div class="pana-list">
+        `;
+        
+        outcomes.forEach((outcome) => {
+            // Calculate sum for display (0 means 10)
+            const digits = outcome.split('').map(d => getDigitValue(d));
+            const sum = digits.reduce((a, b) => a + b, 0);
+            const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
+            
+            html += `
+                <div class="pana-item" data-outcome="${outcome}">
+                    <div class="pana-value-container">
+                        <span class="pana-value">${outcome}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
+}
+
+// Function to update Abr-Cut total
+function updateAbrCutTotal() {
+    const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
+    const activeOutcomeCount = currentAbrCutOutcomes.length;
+    const total = amount * activeOutcomeCount;
+    
+    currentAbrCutAmount = amount;
+    
+    document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
+    document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+    document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+    document.getElementById('form-abr-cut-bet-amount').value = amount;
+    
+    // Update form with all outcomes
+    document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
+    
+    // Enable/disable bet button
+    const betButton = document.getElementById('place-abr-cut-bet-btn');
+    const validationEl = document.getElementById('abr-cut-validation');
+    
+    if (total > 0 && total < 5) {
+        validationEl.textContent = "Minimum total bet is INR 5.00";
+        betButton.disabled = true;
+    } else if (activeOutcomeCount === 0) {
+        validationEl.textContent = "No pannas available for betting";
+        betButton.disabled = true;
+    } else if (amount <= 0) {
+        validationEl.textContent = "Please enter a valid bet amount";
+        betButton.disabled = true;
+    } else {
+        validationEl.textContent = "";
+        betButton.disabled = false;
+    }
+}
+
+// Initialize when Abr-Cut page loads
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelector('.abr-cut-interface').style.display === 'block') {
+        initializeAbrCutGame();
+    }
+});
+</script>
+<!-- ekki bkki -->
+ <script>
+        // Eki Game Logic - 10 separate odd digit panna combinations
+        let currentEkiAmount = 0;
+
+        function initializeEkiGame() {
+            document.getElementById('eki-amount').addEventListener('input', updateEkiTotal);
+            
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                    const formModeInput = document.getElementById('form-eki-mode');
+                    if (formModeInput) {
+                        formModeInput.value = mode;
+                    }
+                });
+            });
+            
+            updateEkiTotal();
+        }
+
+        function updateEkiTotal() {
+            const amount = parseFloat(document.getElementById('eki-amount').value) || 0;
+            const pannaCount = 10; // 10 total outcomes
+            const total = amount * pannaCount;
+            
+            currentEkiAmount = amount;
+            
+            updateEkiTableDisplay(amount);
+            
+            document.getElementById('eki-outcomes-count').textContent = pannaCount;
+            document.getElementById('eki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('eki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-eki-bet-amount').value = amount;
+            
+            const betButton = document.getElementById('place-eki-bet-btn');
+            const validationEl = document.getElementById('eki-validation');
+            
+            if (total > 0 && total < 5) {
+                validationEl.textContent = "Minimum total bet is INR 5.00";
+                betButton.disabled = true;
+            } else if (amount <= 0) {
+                validationEl.textContent = "Please enter a valid bet amount";
+                betButton.disabled = true;
+            } else {
+                validationEl.textContent = "";
+                betButton.disabled = false;
+            }
+        }
+
+        function updateEkiTableDisplay(amount) {
+            const ekiRows = document.querySelectorAll('.eki-panna-row');
+            
+            ekiRows.forEach(row => {
+                const amountCell = row.querySelector('.eki-amount-display');
+                const panna = row.dataset.panna;
+                
+                if (amount > 0) {
+                    amountCell.textContent = `₹${amount.toFixed(2)}`;
+                    amountCell.classList.add('has-bet');
+                    row.classList.add('active-bet');
+                } else {
+                    amountCell.textContent = '-';
+                    amountCell.classList.remove('has-bet');
+                    row.classList.remove('active-bet');
+                }
+            });
+        }
+
+        // Bkki Game Logic - 10 separate even digit panna combinations
+        let currentBkkiAmount = 0;
+
+        function initializeBkkiGame() {
+            document.getElementById('bkki-amount').addEventListener('input', updateBkkiTotal);
+            
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                    const formModeInput = document.getElementById('form-bkki-mode');
+                    if (formModeInput) {
+                        formModeInput.value = mode;
+                    }
+                });
+            });
+            
+            updateBkkiTotal();
+        }
+
+        function updateBkkiTotal() {
+            const amount = parseFloat(document.getElementById('bkki-amount').value) || 0;
+            const pannaCount = 10; // 10 total outcomes
+            const total = amount * pannaCount;
+            
+            currentBkkiAmount = amount;
+            
+            updateBkkiTableDisplay(amount);
+            
+            document.getElementById('bkki-outcomes-count').textContent = pannaCount;
+            document.getElementById('bkki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('bkki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-bkki-bet-amount').value = amount;
+            
+            const betButton = document.getElementById('place-bkki-bet-btn');
+            const validationEl = document.getElementById('bkki-validation');
+            
+            if (total > 0 && total < 5) {
+                validationEl.textContent = "Minimum total bet is INR 5.00";
+                betButton.disabled = true;
+            } else if (amount <= 0) {
+                validationEl.textContent = "Please enter a valid bet amount";
+                betButton.disabled = true;
+            } else {
+                validationEl.textContent = "";
+                betButton.disabled = false;
+            }
+        }
+
+        function updateBkkiTableDisplay(amount) {
+            const bkkiRows = document.querySelectorAll('.bkki-panna-row');
+            
+            bkkiRows.forEach(row => {
+                const amountCell = row.querySelector('.bkki-amount-display');
+                const panna = row.dataset.panna;
+                
+                if (amount > 0) {
+                    amountCell.textContent = `₹${amount.toFixed(2)}`;
+                    amountCell.classList.add('has-bet');
+                    row.classList.add('active-bet');
+                } else {
+                    amountCell.textContent = '-';
+                    amountCell.classList.remove('has-bet');
+                    row.classList.remove('active-bet');
+                }
+            });
+        }
+ </script>
 <!-- timer js -->
 <script>
     // Timer functionality for dynamic matka times

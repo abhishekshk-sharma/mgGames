@@ -1266,23 +1266,27 @@ window.gameTypes = <?php echo json_encode($game_types); ?>;
     // DEBUG: Log game types to console
     console.log('Game Types from Database:', gameTypes);
 
-    // Map game type codes to display names and icons (using lowercase)
-   window.gameTypeMapping =  {
-        'single_ank': { name: 'Single Ank', icon: '🔢', desc: 'Bet on single digit 0-9' },
-        'jodi': { name: 'Jodi', icon: '🔣', desc: 'Bet on pair of digits 00-99' },
-        'single_patti': { name: 'Single Patti', icon: '🎯', desc: 'Bet on three-digit number' },
-        'double_patti': { name: 'Double Patti', icon: '🎲', desc: 'Bet on two three-digit numbers' },
-        'triple_patti': { name: 'Triple Patti', icon: '🎰', desc: 'Bet on three three-digit numbers' },
-        'sp_motor': { name: 'SP Motor', icon: '🏍️', desc: 'Special Motor betting' },
-        'dp_motor': { name: 'DP Motor', icon: '🏎️', desc: 'Double Panel Motor betting' },
-        'dp_set': { name: 'DP Set', icon: '🔄', desc: 'Double Patti Set betting' },
-        'tp_set': { name: 'TP Set', icon: '🎯', desc: 'Triple Patti Set betting' },
-        'sp': { name: 'SP', icon: '⭐', desc: 'Single Patti betting' },
-        'dp': { name: 'DP', icon: '🎲', desc: 'Double Patti betting' },
-        'sp_set': { name: 'SP Set', icon: '🔄', desc: 'Single Patti Set betting' },
-        'common': { name: 'Common', icon: '🎫', desc: 'Common betting game' },
-        'series': { name: 'Series', icon: '📊', desc: 'Series betting game' }
-    };
+// In your PHP code, update the gameTypeMapping to include the new types
+window.gameTypeMapping = {
+    'single_ank': { name: 'Single Ank', icon: '🔢', desc: 'Bet on single digit 0-9' },
+    'jodi': { name: 'Jodi', icon: '🔣', desc: 'Bet on pair of digits 00-99' },
+    'single_patti': { name: 'Single Patti', icon: '🎯', desc: 'Bet on three-digit number' },
+    'double_patti': { name: 'Double Patti', icon: '🎲', desc: 'Bet on two three-digit numbers' },
+    'triple_patti': { name: 'Triple Patti', icon: '🎰', desc: 'Bet on three three-digit numbers' },
+    'sp_motor': { name: 'SP Motor', icon: '🏍️', desc: 'Special Motor betting' },
+    'dp_motor': { name: 'DP Motor', icon: '🏎️', desc: 'Double Panel Motor betting' },
+    'dp_set': { name: 'DP Set', icon: '🔄', desc: 'Double Patti Set betting' },
+    'tp_set': { name: 'TP Set', icon: '🎯', desc: 'Triple Patti Set betting' },
+    'sp': { name: 'SP', icon: '⭐', desc: 'Single Patti betting' },
+    'dp': { name: 'DP', icon: '🎲', desc: 'Double Patti betting' },
+    'sp_set': { name: 'SP Set', icon: '🔄', desc: 'Single Patti Set betting' },
+    'common': { name: 'Common', icon: '🎫', desc: 'Common betting game' },
+    'series': { name: 'Series', icon: '📊', desc: 'Series betting game' },
+    'rown': { name: 'Rown', icon: '📈', desc: 'Rown betting game' },
+    'abr_cut': { name: 'Abr-Cut', icon: '✂️', desc: 'Abr Cut betting game' },
+    'eki': { name: 'Eki', icon: '🎴', desc: 'Eki betting game' },
+    'bkki': { name: 'Bkki', icon: '🎲', desc: 'Bkki betting game' }
+};
 
     // Get modal elements
     const modal = document.getElementById('gameModal');
@@ -1388,7 +1392,7 @@ function openGameModal(gameName1, openTime1, closeTime1, id) {
         // Convert bet type to lowercase for consistent mapping
         let gameType = betType.toLowerCase();
         
-        // Enhanced type mapping with all supported game types
+        // Enhanced type mapping with all supported game types including new ones
         const typeMapping = {
             'single_ank': 'single_ank',
             'jodi': 'jodi', 
@@ -1403,7 +1407,12 @@ function openGameModal(gameName1, openTime1, closeTime1, id) {
             'dp': 'dp_game',
             'sp_set': 'sp_set',
             'common': 'common',
-            'series': 'series'
+            'series': 'series',
+            // NEW GAME TYPES MAPPING
+            'rown': 'rown',
+            'abr_cut': 'abr_cut',
+            'eki': 'eki',
+            'bkki': 'bkki'
         };
         
         // Use mapping or fallback to original type
