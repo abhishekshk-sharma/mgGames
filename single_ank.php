@@ -5,6 +5,13 @@ if (!isset($_SESSION['user_id'])) {
     header("location: login.php");
     exit;
 }
+// Debug mode detection
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    error_log("=== MODE DEBUG ===");
+    error_log("POST mode value: " . (isset($_POST['mode']) ? $_POST['mode'] : 'NOT SET'));
+    error_log("Game type: " . $game_type);
+    error_log("=== END DEBUG ===");
+}
 // MOVE THE MESSAGE RETRIEVAL AND CLEARING TO HERE - AFTER ALL BET PROCESSING
 // Get messages from session and then clear them
 $success_message = isset($_SESSION['success_message']) ? $_SESSION['success_message'] : '';
@@ -118,7 +125,7 @@ error_log("Final game_type_id for '$game_type': $game_type_id");
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'])) {
     $selected_digit = isset($_POST['selected_digit']) ? $_POST['selected_digit'] : '';
     $single_ank_outcomes_json = isset($_POST['single_ank_outcomes']) ? $_POST['single_ank_outcomes'] : '[]';
-    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'hello';
     
     $active_outcomes = json_decode($single_ank_outcomes_json, true);
     
@@ -1566,24 +1573,25 @@ function recordBet($user_id, $game_type_id, $amount, $bet_data, $mode, $game_typ
         // Use the correct game_type enum value based on the actual game being played
         $game_type_enum = mapGameTypeToEnum($game_type);
         
+        // IMPORTANT: Use the $mode parameter in the SQL query (5th parameter)
         $stmt = $conn->prepare("INSERT INTO bets (user_id, game_session_id, game_type_id, game_type, bet_mode, numbers_played, amount, potential_win, status, game_name, open_time, close_time, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, NOW())");
         
         if (!$stmt) {
             throw new Exception("Prepare failed: " . $conn->error);
         }
         
-        // Log the bet details for debugging
-        error_log("Recording bet - User: $user_id, GameTypeID: $game_type_id, Amount: $amount, PotentialWin: $potential_win, GameTypeEnum: $game_type_enum, Game: $game_name, Open: $open_time, Close: $close_time");
+        // Log the bet details for debugging - including the mode
+        error_log("Recording bet - User: $user_id, GameTypeID: $game_type_id, Amount: $amount, Mode: $mode, PotentialWin: $potential_win, GameTypeEnum: $game_type_enum, Game: $game_name, Open: $open_time, Close: $close_time");
         
-        // Bind parameters correctly
+        // Bind parameters correctly - $mode is the 5th parameter
         $stmt->bind_param("iiisssddsss", $user_id, $game_session_id, $game_type_id, $game_type_enum, $mode, $numbers_played, $amount, $potential_win, $game_name, $open_time, $close_time);
         
         if ($stmt->execute()) {
             $bet_id = $stmt->insert_id;
             $stmt->close();
             
-            // Log successful bet recording with game type info
-            error_log("Bet recorded successfully - ID: $bet_id, User: $user_id, Amount: $amount, Game Type ID: $game_type_id, Game Type: $game_type, Potential Win: $potential_win, Game: $game_name");
+            // Log successful bet recording with mode info
+            error_log("Bet recorded successfully - ID: $bet_id, User: $user_id, Amount: $amount, Mode: $mode, Game Type ID: $game_type_id, Game Type: $game_type, Potential Win: $potential_win, Game: $game_name");
             
             return $bet_id;
         } else {
@@ -1614,6 +1622,7 @@ function mapGameTypeToEnum($game_type) {
         'tp_set' => 'tp_set',
         'common' => 'common',
         'series' => 'series',
+           'abr_cut' => 'abr_cut',
           'rown' => 'rown',
            'eki' => 'eki',      // ADD THIS
         'bkki' => 'bkki' 
@@ -1672,9 +1681,7 @@ function calculatePotentialWin($game_type_id, $amount, $bet_data) {
 include 'includes/header.php';          
 
 ?>
-<style>
-    
-</style>
+
 
 <link rel="stylesheet" href="style.css">
 
@@ -1717,9 +1724,10 @@ include 'includes/header.php';
         <div class="alert alert-error"><?php echo $error_message; ?></div>
     <?php endif; ?>
     
-  <!-- Updated Betting Header -->
+<!-- Updated Betting Header - FIXED -->
 <div class="betting-header">
     <div class="header-left">
+        <!-- SHOW MODE TOGGLE FOR ALL GAMES EXCEPT JODI -->
         <?php if ($game_type !== 'jodi'): ?>
         <div class="control-group">
             <div class="control-label">Open / Close</div>
@@ -1738,9 +1746,15 @@ include 'includes/header.php';
     
     <div class="header-right">
         <div class="control-group">
-            <div class="control-label"></div>
+            <div class="control-label">Game Type</div>
             <select class="bet-type-select" id="bet-type" name="bet_type">
-                <!-- Game type options will be populated here -->
+                <?php foreach ($game_types as $type): ?>
+                    <option value="<?php echo $type['id']; ?>" 
+                            data-code="<?php echo $type['code']; ?>"
+                            <?php echo $type['code'] === $game_type ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($type['name']); ?>
+                    </option>
+                <?php endforeach; ?>
             </select>
         </div>
     </div>
@@ -1864,7 +1878,7 @@ include 'includes/header.php';
             <input type="hidden" name="selected_digit" id="form-single-ank-digit">
             <input type="hidden" name="single_ank_outcomes" id="form-single-ank-outcomes" value="[]">
             <input type="hidden" name="bet_amount" id="form-single-ank-bet-amount">
-            <input type="hidden" name="mode" id="form-single-ank-mode" value="open">
+            <input type="hidden" name="mode" id="form-single-ank-mode" value="">
             <input type="hidden" name="place_single_ank_bet" value="1">
             
             <button type="submit" class="action-btn place-bet-btn" id="place-single-ank-bet-btn" disabled>
@@ -1874,12 +1888,23 @@ include 'includes/header.php';
     </div>
 </div>
 <!-- Jodi Interface -->
+<!-- Jodi Interface - FIXED VERSION -->
 <div class="jodi-interface" style="<?php echo $game_type === 'jodi' ? 'display: block;' : 'display: none;'; ?>">
     <div class="jodi-container">
-
         
         <div class="set-info">
             <p>Select two digits, enter amount and add bets to the table</p>
+        </div>
+        
+        <!-- ADD MODE TOGGLE FOR JODI -->
+        <div class="jodi-mode-controls" style="margin-bottom: 20px;">
+            <div class="control-group">
+                <div class="control-label">Open / Close</div>
+                <div class="open-close-toggle">
+                    <div class="toggle-option active" id="jodi-open-toggle">Open</div>
+                    <div class="toggle-option" id="jodi-close-toggle">Close</div>
+                </div>
+            </div>
         </div>
         
         <div class="jodi-controls">
@@ -2925,176 +2950,272 @@ include 'includes/header.php';
         </div>
     </footer>
 <script src="includes/script.js"></script>
-<!-- script that hepl to hide elements of all games -->
 <script>
-function toggleGameUI(gameType) {
-    const isSingleAnk = gameType === 'single_ank';
-    const isJodi = gameType === 'jodi';
-    const isPatti = ['single_patti', 'double_patti', 'triple_patti'].includes(gameType);
-    const isSpMotor = gameType === 'sp_motor';
-    const isDpMotor = gameType === 'dp_motor';
-    const isSpGame = gameType === 'sp_game';
-    const isDpGame = gameType === 'dp_game';
-    const isSpSet = gameType === 'sp_set';
-    const isDpSet = gameType === 'dp_set';
-    const isTpSet = gameType === 'tp_set';
-    const isCommon = gameType === 'common';
-    const isSeries = gameType === 'series';
-    const isRown = gameType === 'rown'; // ADD THIS LINE
-    const isEki = gameType === 'eki';      // ADD THIS
-    const isBkki = gameType === 'bkki';    // ADD THIS
-   const isAbrCut = gameType === 'abr_cut'; // ADD THIS LINE
-    
-    const isSpecialGame = isSingleAnk || isJodi || isPatti || isSpMotor || isDpMotor || 
-                         isSpGame || isDpGame || isSpSet || isDpSet || isTpSet || 
-                         isCommon || isSeries || isRown || isEki || isBkki || isAbrCut; // UPDATE THIS
+// Global mode management
+let currentMode = 'open';
 
-    const elementsToToggle = [
-        '.chips-container',
-        '#numbers-grid',
-        '.bet-total',
-        '.action-buttons',
-        '#bet-form:not(#single-ank-form):not(#jodi-form):not(#patti-form):not(#sp-motor-form):not(#dp-motor-form):not(#sp-game-form):not(#dp-game-form):not(#sp-set-form):not(#dp-set-form):not(#tp-set-form):not(#common-form):not(#series-form):not(#rown-form)'
-    ];
+// Consolidated Mode Toggle System - FIXED VERSION
+function initializeModeToggle() {
+    // Initialize main header toggle
+    const openToggle = document.getElementById('open-toggle');
+    const closeToggle = document.getElementById('close-toggle');
     
-    elementsToToggle.forEach(selector => {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(el => {
-            el.style.display = isSpecialGame ? 'none' : '';
+    if (openToggle && closeToggle) {
+        openToggle.classList.add('active');
+        closeToggle.classList.remove('active');
+        currentMode = 'open';
+        
+        openToggle.addEventListener('click', function() {
+            if (!this.classList.contains('active')) {
+                setActiveMode('open');
+            }
         });
-    });
-    
-    // Show/hide regular betting interface
-    const regularInterface = document.querySelector('.regular-betting-interface');
-    if (regularInterface) {
-        regularInterface.style.display = isSpecialGame ? 'none' : 'block';
+        
+        closeToggle.addEventListener('click', function() {
+            if (!this.classList.contains('active')) {
+                setActiveMode('close');
+            }
+        });
     }
     
-    // Show Single Ank interface if it's Single Ank game
+    // Initialize Jodi mode toggle
+    initializeJodiModeToggle();
+    
+    // Update all mode fields
+    updateAllModeFields(currentMode);
+}
+
+// Jodi Mode Toggle System - FIXED
+function initializeJodiModeToggle() {
+    const openToggle = document.getElementById('jodi-open-toggle');
+    const closeToggle = document.getElementById('jodi-close-toggle');
+    
+    if (openToggle && closeToggle) {
+        openToggle.classList.add('active');
+        closeToggle.classList.remove('active');
+        
+        openToggle.addEventListener('click', function() {
+            if (!this.classList.contains('active')) {
+                setActiveMode('open');
+            }
+        });
+        
+        closeToggle.addEventListener('click', function() {
+            if (!this.classList.contains('active')) {
+                setActiveMode('close');
+            }
+        });
+    }
+}
+
+// Set active mode across all toggles
+function setActiveMode(mode) {
+    currentMode = mode;
+    
+    // Update main header toggle
+    const mainOpenToggle = document.getElementById('open-toggle');
+    const mainCloseToggle = document.getElementById('close-toggle');
+    
+    if (mainOpenToggle && mainCloseToggle) {
+        if (mode === 'open') {
+            mainOpenToggle.classList.add('active');
+            mainCloseToggle.classList.remove('active');
+        } else {
+            mainCloseToggle.classList.add('active');
+            mainOpenToggle.classList.remove('active');
+        }
+    }
+    
+    // Update Jodi toggle
+    const jodiOpenToggle = document.getElementById('jodi-open-toggle');
+    const jodiCloseToggle = document.getElementById('jodi-close-toggle');
+    
+    if (jodiOpenToggle && jodiCloseToggle) {
+        if (mode === 'open') {
+            jodiOpenToggle.classList.add('active');
+            jodiCloseToggle.classList.remove('active');
+        } else {
+            jodiCloseToggle.classList.add('active');
+            jodiOpenToggle.classList.remove('active');
+        }
+    }
+    
+    // Update all mode fields
+    updateAllModeFields(mode);
+}
+
+// Update ALL mode hidden fields
+function updateAllModeFields(mode) {
+    const modeFields = [
+        'form-single-ank-mode',
+        'form-jodi-mode', 
+        'form-patti-mode',
+        'form-sp-motor-mode',
+        'form-dp-motor-mode',
+        'form-sp-game-mode',
+        'form-dp-game-mode',
+        'form-sp-set-mode',
+        'form-dp-set-mode',
+        'form-tp-set-mode',
+        'form-common-mode',
+        'form-series-mode',
+        'form-rown-mode',
+        'form-abr-cut-mode',
+        'form-eki-mode',
+        'form-bkki-mode'
+    ];
+    
+    modeFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.value = mode;
+            console.log(`Updated ${fieldId} to: ${mode}`);
+        }
+    });
+}
+
+
+// function toggleGameUI(gameType) {
+//     const isSingleAnk = gameType === 'single_ank';
+//     const isJodi = gameType === 'jodi';
+//     const isPatti = ['single_patti', 'double_patti', 'triple_patti'].includes(gameType);
+//     const isSpMotor = gameType === 'sp_motor';
+//     const isDpMotor = gameType === 'dp_motor';
+//     const isSpGame = gameType === 'sp_game';
+//     const isDpGame = gameType === 'dp_game';
+//     const isSpSet = gameType === 'sp_set';
+//     const isDpSet = gameType === 'dp_set';
+//     const isTpSet = gameType === 'tp_set'; 
+//     const isCommon = gameType === 'common'; 
+//     const isSeries = gameType === 'series'; 
+//     const isRown = gameType === 'rown';
+//     const isEki = gameType === 'eki';
+//     const isBkki = gameType === 'bkki';
+//     const isAbrCut = gameType === 'abr_cut';
+    
+//     const isSpecialGame = isSingleAnk || isJodi || isPatti || isSpMotor || isDpMotor || isSpGame || isDpGame || isSpSet || isDpSet || isTpSet || isCommon || isSeries || isRown || isEki || isBkki || isAbrCut;
+
+//     const elementsToToggle = [
+//         '.chips-container',
+//         '#numbers-grid',
+//         '.bet-total',
+//         '.action-buttons',
+//         '#bet-form:not(#single-ank-form):not(#jodi-form):not(#patti-form):not(#sp-motor-form):not(#dp-motor-form):not(#sp-game-form):not(#dp-game-form):not(#sp-set-form):not(#dp-set-form):not(#tp-set-form):not(#common-form):not(#series-form):not(#rown-form):not(#abr-cut-form):not(#eki-form):not(#bkki-form)'
+//     ];
+    
+//     elementsToToggle.forEach(selector => {
+//         const elements = document.querySelectorAll(selector);
+//         elements.forEach(el => {
+//             el.style.display = isSpecialGame ? 'none' : '';
+//         });
+//     });
+    
+    // Show Single Ank interface
     const singleAnkInterface = document.querySelector('.single-ank-interface');
     if (singleAnkInterface) {
         singleAnkInterface.style.display = isSingleAnk ? 'block' : 'none';
-        
-        if (isSingleAnk) {
-            initializeSingleAnkGame();
-        }
     }
     
-    // Show Jodi interface if it's Jodi game
+    // Show Jodi interface
     const jodiInterface = document.querySelector('.jodi-interface');
     if (jodiInterface) {
         jodiInterface.style.display = isJodi ? 'block' : 'none';
-        
-        if (isJodi) {
-            initializeJodiGame();
-        }
     }
     
-    // Show Patti interface if it's any patti game
+    // Show Patti interface
     const pattiInterface = document.querySelector('.patti-interface');
     if (pattiInterface) {
         pattiInterface.style.display = isPatti ? 'block' : 'none';
-        
-        if (isPatti) {
-            initializePattiGame();
-        }
     }
     
-    // Show SP Motor interface if it's SP Motor game
+    // Show SP Motor interface
     const spMotorInterface = document.querySelector('.sp-motor-interface');
     if (spMotorInterface) {
         spMotorInterface.style.display = isSpMotor ? 'block' : 'none';
     }
     
-    // Show DP Motor interface if it's DP Motor game
+    // Show DP Motor interface
     const dpMotorInterface = document.querySelector('.dp-motor-interface');
     if (dpMotorInterface) {
         dpMotorInterface.style.display = isDpMotor ? 'block' : 'none';
     }
     
-    // Show SP Game interface if it's SP Game
+    // Show SP Game interface
     const spGameInterface = document.querySelector('.sp-game-interface');
     if (spGameInterface) {
         spGameInterface.style.display = isSpGame ? 'block' : 'none';
     }
     
-    // Show DP Game interface if it's DP Game
+    // Show DP Game interface
     const dpGameInterface = document.querySelector('.dp-game-interface');
     if (dpGameInterface) {
         dpGameInterface.style.display = isDpGame ? 'block' : 'none';
     }
     
-    // Show SP Set interface if it's SP Set
+    // Show SP Set interface
     const spSetInterface = document.querySelector('.sp-set-interface');
     if (spSetInterface) {
         spSetInterface.style.display = isSpSet ? 'block' : 'none';
     }
     
-    // Show DP Set interface if it's DP Set
+    // Show DP Set interface
     const dpSetInterface = document.querySelector('.dp-set-interface');
     if (dpSetInterface) {
         dpSetInterface.style.display = isDpSet ? 'block' : 'none';
     }
     
-    // Show TP Set interface if it's TP Set game
+    // Show TP Set interface
     const tpSetInterface = document.querySelector('.tp-set-interface');
     if (tpSetInterface) {
         tpSetInterface.style.display = isTpSet ? 'block' : 'none';
     }
     
-    // Show Common interface if it's Common game
+    // Show Common interface
     const commonInterface = document.querySelector('.common-interface');
     if (commonInterface) {
         commonInterface.style.display = isCommon ? 'block' : 'none';
-    }
+    } 
     
-    // Show Series interface if it's Series game
+    // Show Series interface
     const seriesInterface = document.querySelector('.series-interface');
     if (seriesInterface) {
         seriesInterface.style.display = isSeries ? 'block' : 'none';
     }
     
-    // Show Rown interface if it's Rown game - ADD THIS SECTION
+    // Show Rown interface
     const rownInterface = document.querySelector('.rown-interface');
     if (rownInterface) {
         rownInterface.style.display = isRown ? 'block' : 'none';
-        
-        // Initialize Rown game if it's shown
-        if (isRown) {
-            initializeRownGame();
-        }
     }
-        // Show Abr-Cut interface if it's Abr-Cut game
+    
+    // Show Abr-Cut interface
     const abrCutInterface = document.querySelector('.abr-cut-interface');
     if (abrCutInterface) {
         abrCutInterface.style.display = isAbrCut ? 'block' : 'none';
-        
-        if (isAbrCut) {
-            initializeAbrCutGame();
-        }
     }
-      // Show Eki interface if it's Eki game
+    
+    // Show Eki interface
     const ekiInterface = document.querySelector('.eki-interface');
     if (ekiInterface) {
         ekiInterface.style.display = isEki ? 'block' : 'none';
-        
-        if (isEki) {
-            initializeEkiGame();
-        }
     }
     
-    // Show Bkki interface if it's Bkki game
+    // Show Bkki interface
     const bkkiInterface = document.querySelector('.bkki-interface');
     if (bkkiInterface) {
         bkkiInterface.style.display = isBkki ? 'block' : 'none';
-        
-        if (isBkki) {
-            initializeBkkiGame();
-        }
+    }
+    
+    // Initialize mode toggles based on game type
+    if (isJodi) {
+        initializeJodiModeToggle();
+    } else {
+        initializeModeToggle();
     }
 }
-   // Also update the bet type change handler to handle DP Set
-  document.addEventListener('DOMContentLoaded', function() {
+
+// Also update the bet type change handler to handle all games
+document.addEventListener('DOMContentLoaded', function() {
     const gameType = '<?php echo $game_type; ?>';
     toggleGameUI(gameType);
     
@@ -3110,27 +3231,44 @@ function toggleGameUI(gameType) {
         // Redirect to the new game type
         window.location.href = `<?php echo $_SERVER['PHP_SELF']; ?>?type=${newGameType}`;
     });
-   });
+});
 
-   // Update the updateNumbersGrid function to handle DP Set
-   function updateNumbersGrid(gameType) {
+// Update the updateNumbersGrid function to handle all special games
+function updateNumbersGrid(gameType) {
     const grid = document.getElementById('numbers-grid');
     
-    // For SP/DP Motor, SP/DP Game, and SP/DP Set, we don't need to populate the number grid
-    if (['sp_motor', 'dp_motor', 'sp_game', 'dp_game', 'sp_set', 'dp_set'].includes(gameType)) {
+    // For all special games, we don't need to populate the number grid
+    const specialGames = ['single_ank', 'jodi', 'single_patti', 'double_patti', 'triple_patti', 'sp_motor', 'dp_motor', 'sp_game', 'dp_game', 'sp_set', 'dp_set', 'tp_set', 'common', 'series', 'rown', 'eki', 'bkki', 'abr_cut'];
+    
+    if (specialGames.includes(gameType)) {
         grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 2rem;">' +
-                         `<p>Use the ${gameType.toUpperCase().replace('_', ' ')} interface below to place your bets</p>` +
+                         `<p>Use the ${gameType.toUpperCase().replace(/_/g, ' ')} interface below to place your bets</p>` +
                          '</div>';
         return;
     }
     
     // ... rest of your existing grid population code ...
-   }
+}
+
+// Force mode update on window load
+window.addEventListener('load', function() {
+    updateAllModeFields(currentMode);
+});
 </script>
+
    <!-- // Single Ank -->
+
+   <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+        integrity="sha256-3fhDOQ5ZJp+M+K7Ry5R8iW6vzH3zjw6K0gE2WvP0Qj8="
+        crossorigin="anonymous"></script>
+
 <script>
          
         let singleAnkBets = [];
+
+        $(document).ready( function(){
+            alert(1);
+        });
 
         function initializeSingleAnkGame() {
             // Add bet button
@@ -3338,7 +3476,51 @@ function toggleGameUI(gameType) {
 
     <!-- // Jodi -->
 <script>
-            let jodiBets = [];
+    // Jodi Mode Toggle System
+    function initializeJodiModeToggle() {
+        const openToggle = document.getElementById('jodi-open-toggle');
+        const closeToggle = document.getElementById('jodi-close-toggle');
+        
+        if (openToggle && closeToggle) {
+            // Set initial active state
+            openToggle.classList.add('active');
+            closeToggle.classList.remove('active');
+            
+            // Add click events
+            openToggle.addEventListener('click', function() {
+                if (!this.classList.contains('active')) {
+                    openToggle.classList.add('active');
+                    closeToggle.classList.remove('active');
+                    document.getElementById('form-jodi-mode').value = 'open';
+                    console.log('Jodi Mode changed to: open');
+                }
+            });
+            
+            closeToggle.addEventListener('click', function() {
+                if (!this.classList.contains('active')) {
+                    closeToggle.classList.add('active');
+                    openToggle.classList.remove('active');
+                    document.getElementById('form-jodi-mode').value = 'close';
+                    console.log('Jodi Mode changed to: close');
+                }
+            });
+        }
+    }
+
+        // Update the initializeJodiGame function to include mode toggle
+        function initializeJodiGame() {
+            // Add bet button
+            document.getElementById('add-jodi-bet').addEventListener('click', function() {
+                addJodiBet();
+            });
+            
+            // Update jodi total when amount changes
+            document.getElementById('jodi-amount').addEventListener('input', updateJodiTotal);
+            
+            // Initialize mode toggle for Jodi
+            initializeJodiModeToggle();
+    }
+                let jodiBets = [];
 
             function initializeJodiGame() {
                 // Add bet button
@@ -6580,275 +6762,275 @@ function toggleGameUI(gameType) {
             const itemsPerPage = 100;
      let totalPages = 1;
 </script>
+<!-- // Abr-Cut Game Logic - Exact 90 pannas -->
 <script>
-// Abr-Cut Game Logic - Exact 90 pannas
-let currentAbrCutAmount = 0;
+        let currentAbrCutAmount = 0;
 
-// Exact 90 Abr-Cut pannas
-const CORRECT_ABR_CUT_PANNAS = [
-    '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
-    '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
-    '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
-    '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
-    '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
-    '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
-    // Additional 30 pannas to make it 90
-    '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
-    '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
-    '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
-];
+        // Exact 90 Abr-Cut pannas
+        const CORRECT_ABR_CUT_PANNAS = [
+            '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+            '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+            '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+            '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+            '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+            '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
+            // Additional 30 pannas to make it 90
+            '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
+            '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
+            '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
+        ];
 
-// Helper function to convert digit for calculation (0 becomes 10)
-function getDigitValue(digit) {
-    return digit === '0' ? 10 : parseInt(digit);
-}
+        // Helper function to convert digit for calculation (0 becomes 10)
+        function getDigitValue(digit) {
+            return digit === '0' ? 10 : parseInt(digit);
+        }
 
-// Function to initialize Abr-Cut game
-function initializeAbrCutGame() {
-    // Use the exact 90 Abr-Cut pannas
-    currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
-    
-    // Verify we have exactly 90 pannas
-    if (currentAbrCutOutcomes.length !== 90) {
-        console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
-        // If not exactly 90, take first 90
-        currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
-    }
-    
-    // Populate the grid
-    updateAbrCutOutcomes(currentAbrCutOutcomes);
-    
-    // Set up event listeners
-    document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
-    
-    // Set mode toggle for Abr-Cut
-    document.querySelectorAll('.toggle-option').forEach(option => {
-        option.addEventListener('click', function() {
-            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-            document.getElementById('form-abr-cut-mode').value = mode;
-        });
-    });
-    
-    // Initial calculation
-    updateAbrCutTotal();
-    
-    console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
-}
-
-// Function to update Abr-Cut outcomes in grid format
-function updateAbrCutOutcomes(outcomes) {
-    const container = document.getElementById('abr-cut-outcomes-container');
-    
-    if (outcomes.length === 0) {
-        container.innerHTML = '<div class="no-digits">No pannas available</div>';
-    } else {
-        let html = `
-            <div class="pana-header">
-                <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
-                <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
-            </div>
-            <div class="pana-list">
-        `;
-        
-        outcomes.forEach((outcome) => {
-            // Calculate sum for display (0 means 10)
-            const digits = outcome.split('').map(d => getDigitValue(d));
-            const sum = digits.reduce((a, b) => a + b, 0);
-            const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
+        // Function to initialize Abr-Cut game
+        function initializeAbrCutGame() {
+            // Use the exact 90 Abr-Cut pannas
+            currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
             
-            html += `
-                <div class="pana-item" data-outcome="${outcome}">
-                    <div class="pana-value-container">
-                        <span class="pana-value">${outcome}</span>
+            // Verify we have exactly 90 pannas
+            if (currentAbrCutOutcomes.length !== 90) {
+                console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
+                // If not exactly 90, take first 90
+                currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
+            }
+            
+            // Populate the grid
+            updateAbrCutOutcomes(currentAbrCutOutcomes);
+            
+            // Set up event listeners
+            document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
+            
+            // Set mode toggle for Abr-Cut
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                    document.getElementById('form-abr-cut-mode').value = mode;
+                });
+            });
+            
+            // Initial calculation
+            updateAbrCutTotal();
+            
+            console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
+        }
+
+        // Function to update Abr-Cut outcomes in grid format
+        function updateAbrCutOutcomes(outcomes) {
+            const container = document.getElementById('abr-cut-outcomes-container');
+            
+            if (outcomes.length === 0) {
+                container.innerHTML = '<div class="no-digits">No pannas available</div>';
+            } else {
+                let html = `
+                    <div class="pana-header">
+                        <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
+                        <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
                     </div>
-                </div>
-            `;
+                    <div class="pana-list">
+                `;
+                
+                outcomes.forEach((outcome) => {
+                    // Calculate sum for display (0 means 10)
+                    const digits = outcome.split('').map(d => getDigitValue(d));
+                    const sum = digits.reduce((a, b) => a + b, 0);
+                    const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
+                    
+                    html += `
+                        <div class="pana-item" data-outcome="${outcome}">
+                            <div class="pana-value-container">
+                                <span class="pana-value">${outcome}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+            }
+            
+            document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
+        }
+
+        // Function to update Abr-Cut total
+        function updateAbrCutTotal() {
+            const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
+            const activeOutcomeCount = currentAbrCutOutcomes.length;
+            const total = amount * activeOutcomeCount;
+            
+            currentAbrCutAmount = amount;
+            
+            document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
+            document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-abr-cut-bet-amount').value = amount;
+            
+            // Update form with all outcomes
+            document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
+            
+            // Enable/disable bet button
+            const betButton = document.getElementById('place-abr-cut-bet-btn');
+            const validationEl = document.getElementById('abr-cut-validation');
+            
+            if (total > 0 && total < 5) {
+                validationEl.textContent = "Minimum total bet is INR 5.00";
+                betButton.disabled = true;
+            } else if (activeOutcomeCount === 0) {
+                validationEl.textContent = "No pannas available for betting";
+                betButton.disabled = true;
+            } else if (amount <= 0) {
+                validationEl.textContent = "Please enter a valid bet amount";
+                betButton.disabled = true;
+            } else {
+                validationEl.textContent = "";
+                betButton.disabled = false;
+            }
+        }
+
+        // Initialize when Abr-Cut page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.querySelector('.abr-cut-interface').style.display === 'block') {
+                initializeAbrCutGame();
+            }
         });
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-    
-    document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
-}
+        </script>
+        <!-- ekki bkki -->
+        <script>
+                // Eki Game Logic - 10 separate odd digit panna combinations
+                let currentEkiAmount = 0;
 
-// Function to update Abr-Cut total
-function updateAbrCutTotal() {
-    const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
-    const activeOutcomeCount = currentAbrCutOutcomes.length;
-    const total = amount * activeOutcomeCount;
-    
-    currentAbrCutAmount = amount;
-    
-    document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
-    document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-    document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-    document.getElementById('form-abr-cut-bet-amount').value = amount;
-    
-    // Update form with all outcomes
-    document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
-    
-    // Enable/disable bet button
-    const betButton = document.getElementById('place-abr-cut-bet-btn');
-    const validationEl = document.getElementById('abr-cut-validation');
-    
-    if (total > 0 && total < 5) {
-        validationEl.textContent = "Minimum total bet is INR 5.00";
-        betButton.disabled = true;
-    } else if (activeOutcomeCount === 0) {
-        validationEl.textContent = "No pannas available for betting";
-        betButton.disabled = true;
-    } else if (amount <= 0) {
-        validationEl.textContent = "Please enter a valid bet amount";
-        betButton.disabled = true;
-    } else {
-        validationEl.textContent = "";
-        betButton.disabled = false;
-    }
-}
-
-// Initialize when Abr-Cut page loads
-document.addEventListener('DOMContentLoaded', function() {
-    if (document.querySelector('.abr-cut-interface').style.display === 'block') {
-        initializeAbrCutGame();
-    }
-});
-</script>
-<!-- ekki bkki -->
- <script>
-        // Eki Game Logic - 10 separate odd digit panna combinations
-        let currentEkiAmount = 0;
-
-        function initializeEkiGame() {
-            document.getElementById('eki-amount').addEventListener('input', updateEkiTotal);
-            
-            document.querySelectorAll('.toggle-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-                    const formModeInput = document.getElementById('form-eki-mode');
-                    if (formModeInput) {
-                        formModeInput.value = mode;
-                    }
-                });
-            });
-            
-            updateEkiTotal();
-        }
-
-        function updateEkiTotal() {
-            const amount = parseFloat(document.getElementById('eki-amount').value) || 0;
-            const pannaCount = 10; // 10 total outcomes
-            const total = amount * pannaCount;
-            
-            currentEkiAmount = amount;
-            
-            updateEkiTableDisplay(amount);
-            
-            document.getElementById('eki-outcomes-count').textContent = pannaCount;
-            document.getElementById('eki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-            document.getElementById('eki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-            document.getElementById('form-eki-bet-amount').value = amount;
-            
-            const betButton = document.getElementById('place-eki-bet-btn');
-            const validationEl = document.getElementById('eki-validation');
-            
-            if (total > 0 && total < 5) {
-                validationEl.textContent = "Minimum total bet is INR 5.00";
-                betButton.disabled = true;
-            } else if (amount <= 0) {
-                validationEl.textContent = "Please enter a valid bet amount";
-                betButton.disabled = true;
-            } else {
-                validationEl.textContent = "";
-                betButton.disabled = false;
-            }
-        }
-
-        function updateEkiTableDisplay(amount) {
-            const ekiRows = document.querySelectorAll('.eki-panna-row');
-            
-            ekiRows.forEach(row => {
-                const amountCell = row.querySelector('.eki-amount-display');
-                const panna = row.dataset.panna;
-                
-                if (amount > 0) {
-                    amountCell.textContent = `₹${amount.toFixed(2)}`;
-                    amountCell.classList.add('has-bet');
-                    row.classList.add('active-bet');
-                } else {
-                    amountCell.textContent = '-';
-                    amountCell.classList.remove('has-bet');
-                    row.classList.remove('active-bet');
+                function initializeEkiGame() {
+                    document.getElementById('eki-amount').addEventListener('input', updateEkiTotal);
+                    
+                    document.querySelectorAll('.toggle-option').forEach(option => {
+                        option.addEventListener('click', function() {
+                            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                            const formModeInput = document.getElementById('form-eki-mode');
+                            if (formModeInput) {
+                                formModeInput.value = mode;
+                            }
+                        });
+                    });
+                    
+                    updateEkiTotal();
                 }
-            });
-        }
 
-        // Bkki Game Logic - 10 separate even digit panna combinations
-        let currentBkkiAmount = 0;
-
-        function initializeBkkiGame() {
-            document.getElementById('bkki-amount').addEventListener('input', updateBkkiTotal);
-            
-            document.querySelectorAll('.toggle-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-                    const formModeInput = document.getElementById('form-bkki-mode');
-                    if (formModeInput) {
-                        formModeInput.value = mode;
+                function updateEkiTotal() {
+                    const amount = parseFloat(document.getElementById('eki-amount').value) || 0;
+                    const pannaCount = 10; // 10 total outcomes
+                    const total = amount * pannaCount;
+                    
+                    currentEkiAmount = amount;
+                    
+                    updateEkiTableDisplay(amount);
+                    
+                    document.getElementById('eki-outcomes-count').textContent = pannaCount;
+                    document.getElementById('eki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+                    document.getElementById('eki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+                    document.getElementById('form-eki-bet-amount').value = amount;
+                    
+                    const betButton = document.getElementById('place-eki-bet-btn');
+                    const validationEl = document.getElementById('eki-validation');
+                    
+                    if (total > 0 && total < 5) {
+                        validationEl.textContent = "Minimum total bet is INR 5.00";
+                        betButton.disabled = true;
+                    } else if (amount <= 0) {
+                        validationEl.textContent = "Please enter a valid bet amount";
+                        betButton.disabled = true;
+                    } else {
+                        validationEl.textContent = "";
+                        betButton.disabled = false;
                     }
-                });
-            });
-            
-            updateBkkiTotal();
-        }
-
-        function updateBkkiTotal() {
-            const amount = parseFloat(document.getElementById('bkki-amount').value) || 0;
-            const pannaCount = 10; // 10 total outcomes
-            const total = amount * pannaCount;
-            
-            currentBkkiAmount = amount;
-            
-            updateBkkiTableDisplay(amount);
-            
-            document.getElementById('bkki-outcomes-count').textContent = pannaCount;
-            document.getElementById('bkki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-            document.getElementById('bkki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-            document.getElementById('form-bkki-bet-amount').value = amount;
-            
-            const betButton = document.getElementById('place-bkki-bet-btn');
-            const validationEl = document.getElementById('bkki-validation');
-            
-            if (total > 0 && total < 5) {
-                validationEl.textContent = "Minimum total bet is INR 5.00";
-                betButton.disabled = true;
-            } else if (amount <= 0) {
-                validationEl.textContent = "Please enter a valid bet amount";
-                betButton.disabled = true;
-            } else {
-                validationEl.textContent = "";
-                betButton.disabled = false;
-            }
-        }
-
-        function updateBkkiTableDisplay(amount) {
-            const bkkiRows = document.querySelectorAll('.bkki-panna-row');
-            
-            bkkiRows.forEach(row => {
-                const amountCell = row.querySelector('.bkki-amount-display');
-                const panna = row.dataset.panna;
-                
-                if (amount > 0) {
-                    amountCell.textContent = `₹${amount.toFixed(2)}`;
-                    amountCell.classList.add('has-bet');
-                    row.classList.add('active-bet');
-                } else {
-                    amountCell.textContent = '-';
-                    amountCell.classList.remove('has-bet');
-                    row.classList.remove('active-bet');
                 }
-            });
-        }
+
+                function updateEkiTableDisplay(amount) {
+                    const ekiRows = document.querySelectorAll('.eki-panna-row');
+                    
+                    ekiRows.forEach(row => {
+                        const amountCell = row.querySelector('.eki-amount-display');
+                        const panna = row.dataset.panna;
+                        
+                        if (amount > 0) {
+                            amountCell.textContent = `₹${amount.toFixed(2)}`;
+                            amountCell.classList.add('has-bet');
+                            row.classList.add('active-bet');
+                        } else {
+                            amountCell.textContent = '-';
+                            amountCell.classList.remove('has-bet');
+                            row.classList.remove('active-bet');
+                        }
+                    });
+                }
+
+                // Bkki Game Logic - 10 separate even digit panna combinations
+                let currentBkkiAmount = 0;
+
+                function initializeBkkiGame() {
+                    document.getElementById('bkki-amount').addEventListener('input', updateBkkiTotal);
+                    
+                    document.querySelectorAll('.toggle-option').forEach(option => {
+                        option.addEventListener('click', function() {
+                            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                            const formModeInput = document.getElementById('form-bkki-mode');
+                            if (formModeInput) {
+                                formModeInput.value = mode;
+                            }
+                        });
+                    });
+                    
+                    updateBkkiTotal();
+                }
+
+                function updateBkkiTotal() {
+                    const amount = parseFloat(document.getElementById('bkki-amount').value) || 0;
+                    const pannaCount = 10; // 10 total outcomes
+                    const total = amount * pannaCount;
+                    
+                    currentBkkiAmount = amount;
+                    
+                    updateBkkiTableDisplay(amount);
+                    
+                    document.getElementById('bkki-outcomes-count').textContent = pannaCount;
+                    document.getElementById('bkki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+                    document.getElementById('bkki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+                    document.getElementById('form-bkki-bet-amount').value = amount;
+                    
+                    const betButton = document.getElementById('place-bkki-bet-btn');
+                    const validationEl = document.getElementById('bkki-validation');
+                    
+                    if (total > 0 && total < 5) {
+                        validationEl.textContent = "Minimum total bet is INR 5.00";
+                        betButton.disabled = true;
+                    } else if (amount <= 0) {
+                        validationEl.textContent = "Please enter a valid bet amount";
+                        betButton.disabled = true;
+                    } else {
+                        validationEl.textContent = "";
+                        betButton.disabled = false;
+                    }
+                }
+
+                function updateBkkiTableDisplay(amount) {
+                    const bkkiRows = document.querySelectorAll('.bkki-panna-row');
+                    
+                    bkkiRows.forEach(row => {
+                        const amountCell = row.querySelector('.bkki-amount-display');
+                        const panna = row.dataset.panna;
+                        
+                        if (amount > 0) {
+                            amountCell.textContent = `₹${amount.toFixed(2)}`;
+                            amountCell.classList.add('has-bet');
+                            row.classList.add('active-bet');
+                        } else {
+                            amountCell.textContent = '-';
+                            amountCell.classList.remove('has-bet');
+                            row.classList.remove('active-bet');
+                        }
+                    });
+                }
  </script>
 <!-- timer js -->
 <script>
@@ -7100,7 +7282,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 </script>
 
-<!-- closed js -->
+<!-- close matka js -->
 <script>
     // Game Time Management Script
     function manageGameTimeLogic(openTime, closeTime, gameType = 'all') {
@@ -7130,14 +7312,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const isOpenTimeCompleted = openDiff <= 0; // Open time has passed
             const isCloseTimeCompleted = closeDiff <= 0; // Close time has passed
             
-            console.log('Game Time Check:', {
-                gameType: gameType,
-                currentTime: istTime.toLocaleTimeString(),
-                openTime: openTimeToday.toLocaleTimeString(),
-                closeTime: closeTimeToday.toLocaleTimeString(),
-                isOpenTimeCompleted,
-                isCloseTimeCompleted
-            });
+            // console.log('Game Time Check:', {
+            //     gameType: gameType,
+            //     currentTime: istTime.toLocaleTimeString(),
+            //     openTime: openTimeToday.toLocaleTimeString(),
+            //     closeTime: closeTimeToday.toLocaleTimeString(),
+            //     isOpenTimeCompleted,
+            //     isCloseTimeCompleted
+            // });
 
             // Update game states based on close time completion
             if (isCloseTimeCompleted) {
@@ -7458,5 +7640,6 @@ document.addEventListener('DOMContentLoaded', function() {
     styleSheet.textContent = disabledButtonStyles;
     document.head.appendChild(styleSheet);
 </script>
+
 </body>
 </html>
