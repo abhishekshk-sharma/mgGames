@@ -17,40 +17,59 @@ if (!isset($_SESSION['admin_id'])) {
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
 
+// Set a valid timezone (remove the invalid one)
+// date_default_timezone_set('Asia/Kolkata'); // Uncomment and set your actual timezone if needed
+
 // Date filtering setup
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-7 days'));
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 $date_filter = isset($_GET['date_filter']) ? $_GET['date_filter'] : 'custom';
 
+// FIXED: Get referral_code properly
+$referral_code = '';
 $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_code  = $stmt->get_result();
-$referral_code = $referral_code->fetch_assoc();
+if ($stmt) {
+    $stmt->bind_param("i", $admin_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $referral_code = $row['referral_code'];
+    }
+    $stmt->close();
+}
 
-// Set dates based on quick filters
+// If referral_code is empty, set a default or handle the error
+if (empty($referral_code)) {
+    // You can either redirect or set a default
+    // header("location: error.php?message=Invalid admin configuration");
+    // exit;
+    $referral_code = 'default'; // Temporary fallback
+}
+
+// Set dates based on quick filters - FIXED VERSION
 if ($date_filter != 'custom') {
+    $today = date('Y-m-d');
     switch ($date_filter) {
         case 'today':
-            $start_date = date('Y-m-d');
-            $end_date = date('Y-m-d');
+            $start_date = $today;
+            $end_date = $today;
             break;
         case 'yesterday':
-            $start_date = date('Y-m-d', strtotime('yesterday'));
-            $end_date = date('Y-m-d', strtotime('yesterday'));
+            $start_date = date('Y-m-d', strtotime('-1 day'));
+            $end_date = date('Y-m-d', strtotime('-1 day'));
             break;
         case 'this_week':
-            // Get Monday of this week
             $start_date = date('Y-m-d', strtotime('monday this week'));
-            $end_date = date('Y-m-d');
+            $end_date = $today;
             break;
         case 'last_week':
-            // Get Monday of last week to Sunday of last week
             $start_date = date('Y-m-d', strtotime('monday last week'));
             $end_date = date('Y-m-d', strtotime('sunday last week'));
             break;
         case 'this_month':
             $start_date = date('Y-m-01');
-            $end_date = date('Y-m-d');
+            $end_date = $today;
             break;
         case 'last_month':
             $start_date = date('Y-m-01', strtotime('first day of last month'));
@@ -75,15 +94,15 @@ if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
 
-// Build query for bet count
+// Build query for bet count - FIXED
 $count_sql = "SELECT COUNT(*) as total 
               FROM bets b
               JOIN users u ON b.user_id = u.id
               JOIN games g ON b.game_type_id = g.id
-              WHERE b.placed_at >= ? AND b.placed_at < DATE_ADD(?, INTERVAL 1 DAY) 
-              AND u.referral_code = '".$referral_code['referral_code']."'";
-$params = [$start_date, $end_date];
-$types = 'ss';
+              WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+              AND u.referral_code = ?";
+$params = [$start_date, $end_date, $referral_code];
+$types = 'sss';
 
 if ($filter_user) {
     $count_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
@@ -104,78 +123,76 @@ if ($filter_status) {
     $types .= 's';
 }
 
-$stmt_count = $conn->prepare($count_sql." AND u.referral_code = '".$referral_code['referral_code']."'");
-if ($params) {
-    $stmt_count->bind_param($types, ...$params);
+$stmt_count = $conn->prepare($count_sql);
+if ($stmt_count) {
+    if ($params) {
+        $stmt_count->bind_param($types, ...$params);
+    }
+    $stmt_count->execute();
+    $result_count = $stmt_count->get_result();
+    $total_records = $result_count->fetch_assoc()['total'];
+    $total_pages = ceil($total_records / $limit);
+    $stmt_count->close();
+} else {
+    $total_records = 0;
+    $total_pages = 0;
 }
-$stmt_count->execute();
-$result_count = $stmt_count->get_result();
-$total_records = $result_count->fetch_assoc()['total'];
-$total_pages = ceil($total_records / $limit);
 
-// Build query for bets with pagination
+// Build query for bets with pagination - FIXED
 $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.close_time,
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
         JOIN users u ON b.user_id = u.id
         JOIN games g ON b.game_type_id = g.id
         LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
-        WHERE b.placed_at >= ? AND b.placed_at < DATE_ADD(?, INTERVAL 1 DAY) 
-        AND u.referral_code = '".$referral_code['referral_code']."'";
+        WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+        AND u.referral_code = ?";
+
+$params = [$start_date, $end_date, $referral_code];
+$types = 'sss';
 
 if ($filter_user) {
     $sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
-}
-
-if ($filter_game) {
-    $sql .= " AND g.name LIKE ?";
-}
-
-if ($filter_status) {
-    $sql .= " AND b.status = ?";
-}
-
-$sql .= "AND u.referral_code = '".$referral_code['referral_code']."' ORDER BY b.placed_at DESC LIMIT ? OFFSET ?";
-
-$stmt = $conn->prepare($sql);
-$params = [$start_date, $end_date];
-$types = 'ss';
-
-if ($filter_user) {
     $params[] = "%$filter_user%";
     $params[] = "%$filter_user%";
     $types .= 'ss';
 }
 
 if ($filter_game) {
+    $sql .= " AND g.name LIKE ?";
     $params[] = "%$filter_game%";
     $types .= 's';
 }
 
 if ($filter_status) {
+    $sql .= " AND b.status = ?";
     $params[] = $filter_status;
     $types .= 's';
 }
 
+$sql .= " ORDER BY b.placed_at DESC LIMIT ? OFFSET ?";
 $params[] = $limit;
 $params[] = $offset;
 $types .= 'ii';
 
-if ($params) {
-    $stmt->bind_param($types, ...$params);
-}
-
-$stmt->execute();
-$result = $stmt->get_result();
 $bets = [];
-
-if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $bets[] = $row;
+$stmt = $conn->prepare($sql);
+if ($stmt) {
+    if ($params) {
+        $stmt->bind_param($types, ...$params);
     }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $bets[] = $row;
+        }
+    }
+    $stmt->close();
 }
 
-// Get stats for dashboard
+// Get stats for dashboard - FIXED
 $stats_sql = "SELECT 
     COUNT(*) as total_bets,
     SUM(b.amount) as total_amount,
@@ -184,21 +201,21 @@ $stats_sql = "SELECT
     COUNT(CASE WHEN b.status = 'pending' THEN 1 END) as pending_bets
     FROM bets b
     JOIN users u ON b.user_id = u.id 
-    WHERE b.placed_at >= ? AND b.placed_at < DATE_ADD(?, INTERVAL 1 DAY) 
-    AND u.referral_code = '".$referral_code['referral_code']."'";
+    WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+    AND u.referral_code = ?";
 
-$stats_params = [$start_date, $end_date];
-$stats_types = 'ss';
+$stats_params = [$start_date, $end_date, $referral_code];
+$stats_types = 'sss';
 
 if ($filter_user) {
-    $stats_sql .= " AND b.user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)";
+    $stats_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
     $stats_params[] = "%$filter_user%";
     $stats_params[] = "%$filter_user%";
     $stats_types .= 'ss';
 }
 
 if ($filter_game) {
-    $stats_sql .= " AND b.game_id IN (SELECT id FROM games WHERE name LIKE ?)";
+    $stats_sql .= " AND b.game_type_id IN (SELECT id FROM games WHERE name LIKE ?)";
     $stats_params[] = "%$filter_game%";
     $stats_types .= 's';
 }
@@ -209,19 +226,29 @@ if ($filter_status) {
     $stats_types .= 's';
 }
 
-$stmt_stats = $conn->prepare($stats_sql);
-if ($stats_params) {
-    $stmt_stats->bind_param($stats_types, ...$stats_params);
-}
-$stmt_stats->execute();
-$stats_result = $stmt_stats->get_result();
-$stats = $stats_result->fetch_assoc();
+$total_bets = 0;
+$total_amount = 0;
+$total_potential = 0;
+$won_bets = 0;
+$pending_bets = 0;
 
-$total_bets = $stats['total_bets'] ? $stats['total_bets'] : 0;
-$total_amount = $stats['total_amount'] ? $stats['total_amount'] : 0;
-$total_potential = $stats['total_potential'] ? $stats['total_potential'] : 0;
-$won_bets = $stats['won_bets'] ? $stats['won_bets'] : 0;
-$pending_bets = $stats['pending_bets'] ? $stats['pending_bets'] : 0;
+$stmt_stats = $conn->prepare($stats_sql);
+if ($stmt_stats) {
+    if ($stats_params) {
+        $stmt_stats->bind_param($stats_types, ...$stats_params);
+    }
+    $stmt_stats->execute();
+    $stats_result = $stmt_stats->get_result();
+    if ($stats_result && $stats_result->num_rows > 0) {
+        $stats = $stats_result->fetch_assoc();
+        $total_bets = $stats['total_bets'] ? $stats['total_bets'] : 0;
+        $total_amount = $stats['total_amount'] ? $stats['total_amount'] : 0;
+        $total_potential = $stats['total_potential'] ? $stats['total_potential'] : 0;
+        $won_bets = $stats['won_bets'] ? $stats['won_bets'] : 0;
+        $pending_bets = $stats['pending_bets'] ? $stats['pending_bets'] : 0;
+    }
+    $stmt_stats->close();
+}
 
 // Get unique games for filter dropdown
 $games_sql = "SELECT DISTINCT name FROM games ORDER BY name";
@@ -1840,7 +1867,7 @@ if ($games_result && $games_result->num_rows > 0) {
         handleResize();
         window.addEventListener('resize', handleResize);
         
-        // Quick filter functionality
+        // Quick filter functionality - FIXED VERSION
         document.querySelectorAll('.quick-filter-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const filter = this.getAttribute('data-filter');
@@ -1864,6 +1891,9 @@ if ($games_result && $games_result->num_rows > 0) {
                     endDate.setAttribute('readonly', 'readonly');
                 }
                 
+                // Set page to 1 when changing filters
+                document.querySelector('input[name="page"]').value = 1;
+                
                 // Submit form
                 document.getElementById('filterForm').submit();
             });
@@ -1884,6 +1914,15 @@ if ($games_result && $games_result->num_rows > 0) {
         
         // Update every minute
         setInterval(updateTime, 60000);
+
+
+        document.getElementById('filterForm').addEventListener('submit', function(e) {
+            console.log('Submitting filter:', {
+                date_filter: document.getElementById('dateFilter').value,
+                start_date: document.querySelector('input[name="start_date"]').value,
+                end_date: document.querySelector('input[name="end_date"]').value
+            });
+        });
     </script>
 </body>
 </html>
