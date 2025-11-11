@@ -1113,7 +1113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
                 error_log("Wallet deduction failed for bkki bet - user $user_id");
             }
-        } else {
+        } 
+        else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
                 number_format($total_bet_amount, 2) . " but only have INR " . 
                 number_format($balance, 2) . " in your account.";
