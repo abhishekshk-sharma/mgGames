@@ -1566,6 +1566,10 @@ if ($games_result && $games_result->num_rows > 0) {
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
                 </a>
+                <a href="admin_profile.php" class="menu-item ">
+                    <i class="fas fa-user"></i>
+                    <span>Profile</span>
+                </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
