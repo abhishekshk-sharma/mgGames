@@ -110,7 +110,7 @@ if ($stmt = $conn->prepare("SELECT id, amount, payment_method, utr_number, statu
 
 // Fetch withdrawals
 $all_withdrawals = [];
-if ($stmt = $conn->prepare("SELECT id, amount, payment_method, '' as utr_number, status, created_at, 'withdrawal' as type, '' as admin_notes FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC")) {
+if ($stmt = $conn->prepare("SELECT id, amount, payment_method, '' as utr_number, status, created_at, 'withdrawal' as type, admin_notes FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC")) {
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
     $result = $stmt->get_result();
