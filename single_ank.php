@@ -5,13 +5,6 @@ if (!isset($_SESSION['user_id'])) {
     header("location: login.php");
     exit;
 }
-// Debug mode detection
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    error_log("=== MODE DEBUG ===");
-    error_log("POST mode value: " . (isset($_POST['mode']) ? $_POST['mode'] : 'NOT SET'));
-    error_log("Game type: " . $game_type);
-    error_log("=== END DEBUG ===");
-}
 // MOVE THE MESSAGE RETRIEVAL AND CLEARING TO HERE - AFTER ALL BET PROCESSING
 // Get messages from session and then clear them
 $success_message = isset($_SESSION['success_message']) ? $_SESSION['success_message'] : '';
@@ -122,10 +115,12 @@ if ($game_type_id === 1) {
 error_log("Final game_type_id for '$game_type': $game_type_id");
 
 // ANK 
+
+// SINGLE ANK - Store as {"5":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'])) {
     $selected_digit = isset($_POST['selected_digit']) ? $_POST['selected_digit'] : '';
     $single_ank_outcomes_json = isset($_POST['single_ank_outcomes']) ? $_POST['single_ank_outcomes'] : '[]';
-    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'hello';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
     $active_outcomes = json_decode($single_ank_outcomes_json, true);
     
@@ -142,14 +137,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'
             $total_bet_amount += $outcome_amount;
         }
 
-        if (!is_numeric($total_bet_amount) || $total_bet_amount <= 0) {
-            $_SESSION['error_message'] = "Invalid total bet amount calculated";
-            header("Location: " . $_SERVER['PHP_SELF'] . "?type=" . urlencode($game_type));
-            exit();
-        }
-
-        error_log("Single Ank Bet - Outcomes: " . count($active_outcomes) . ", Total: $total_bet_amount");
-                
         if ($total_bet_amount < 5) {
             $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
         }
@@ -164,27 +151,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'
                     
                     if ($outcome_amount <= 0 || empty($outcome_digit)) {
                         $failed_bets++;
-                        error_log("Invalid outcome data: " . json_encode($outcome));
                         continue;
                     }
                     
+                    // SIMPLIFIED FORMAT: {"5":500}
                     $individual_bet_data = [
-                        'selected_digit' => $selected_digit,
-                        'single_ank_outcomes' => [$outcome],
-                        'amount_per_outcome' => $outcome_amount,
-                        'total_amount' => $outcome_amount,
-                        'game_type' => 'single_ank',
-                        'outcome_digit' => $outcome_digit
+                        $outcome_digit => $outcome_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $outcome_amount, $individual_bet_data, $bet_mode, 'single_ank');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("Single Ank bet recorded - Digit: $outcome_digit, Amount: $outcome_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record single ank bet for outcome: " . $outcome_digit . " with amount: " . $outcome_amount);
                     }
                 }
                 
@@ -195,12 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'
                     
                     if ($failed_bets > 0) {
                         $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                        $failed_amount = 0;
-                        foreach ($active_outcomes as $index => $outcome) {
-                            if ($index >= $successful_bets) {
-                                $failed_amount += isset($outcome['amount']) ? (float)$outcome['amount'] : 0;
-                            }
-                        }
+                        $failed_amount = $total_bet_amount - ($successful_bets * $outcome_amount);
                         if ($failed_amount > 0) {
                             refundBetAmount($user_id, $failed_amount, 'Refund for failed single ank bets');
                         }
@@ -208,15 +183,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All single ank bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, 'All single ank bet recordings failed');
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for Single Ank bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -225,19 +197,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_single_ank_bet'
         }
     }
     
-  $redirect_params = $_GET;
+$redirect_params = $_GET;
 $redirect_params['type'] = $game_type;
 $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
 header("Location: " . $redirect_url);
 exit();
 }
 
-// JODI - INDIVIDUAL OUTCOMES - FIXED VERSION
+
+
+// JODI - Store as {"56":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
     $selected_digit1 = isset($_POST['selected_digit1']) ? $_POST['selected_digit1'] : '';
     $selected_digit2 = isset($_POST['selected_digit2']) ? $_POST['selected_digit2'] : '';
     $jodi_outcomes_json = isset($_POST['jodi_outcomes']) ? $_POST['jodi_outcomes'] : '[]';
-  $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';    
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
     $active_outcomes = json_decode($jodi_outcomes_json, true);
     
     if (empty($selected_digit1) || empty($selected_digit2)) {
@@ -248,21 +223,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
     } elseif (empty($active_outcomes)) {
         $_SESSION['error_message'] = "Please add at least one bet to the table";
     } else {
-        // FIX: Calculate total by summing individual outcome amounts
         $total_bet_amount = 0;
         foreach ($active_outcomes as $outcome) {
             $outcome_amount = isset($outcome['amount']) ? (float)$outcome['amount'] : 0;
             $total_bet_amount += $outcome_amount;
         }
 
-        if (!is_numeric($total_bet_amount) || $total_bet_amount <= 0) {
-            $_SESSION['error_message'] = "Invalid total bet amount calculated";
-            header("Location: " . $_SERVER['PHP_SELF'] . "?type=" . urlencode($game_type));
-            exit();
-        }
-
-        error_log("Jodi Bet - Outcomes: " . count($active_outcomes) . ", Total: $total_bet_amount");
-                
         if ($total_bet_amount < 5) {
             $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
         }
@@ -277,28 +243,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
                     
                     if ($outcome_amount <= 0 || empty($outcome_jodi)) {
                         $failed_bets++;
-                        error_log("Invalid outcome data: " . json_encode($outcome));
                         continue;
                     }
                     
+                    // SIMPLIFIED FORMAT: {"56":500}
                     $individual_bet_data = [
-                        'selected_digit1' => $selected_digit1,
-                        'selected_digit2' => $selected_digit2,
-                        'jodi_outcomes' => [$outcome],
-                        'amount_per_outcome' => $outcome_amount,
-                        'total_amount' => $outcome_amount,
-                        'game_type' => 'jodi',
-                        'outcome_jodi' => $outcome_jodi
+                        $outcome_jodi => $outcome_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $outcome_amount, $individual_bet_data, $bet_mode, 'jodi');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("Jodi bet recorded - Jodi: $outcome_jodi, Amount: $outcome_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record jodi bet for outcome: " . $outcome_jodi . " with amount: " . $outcome_amount);
                     }
                 }
                 
@@ -309,12 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
                     
                     if ($failed_bets > 0) {
                         $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                        $failed_amount = 0;
-                        foreach ($active_outcomes as $index => $outcome) {
-                            if ($index >= $successful_bets) {
-                                $failed_amount += isset($outcome['amount']) ? (float)$outcome['amount'] : 0;
-                            }
-                        }
+                        $failed_amount = $total_bet_amount - ($successful_bets * $outcome_amount);
                         if ($failed_amount > 0) {
                             refundBetAmount($user_id, $failed_amount, 'Refund for failed jodi bets');
                         }
@@ -322,15 +275,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All jodi bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, 'All jodi bet recordings failed');
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for Jodi bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -339,7 +289,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
         }
     }
     
-   // Replace the existing redirect in Jodi section  
 $redirect_params = $_GET;
 $redirect_params['type'] = $game_type;
 $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
@@ -347,7 +296,7 @@ header("Location: " . $redirect_url);
 exit();
 }
 
-// PATTI GAMES (Single, Double, Triple) - INDIVIDUAL OUTCOMES - FIXED VERSION
+// PATTI GAMES - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_patti_bet'])) {
     $patti_type = isset($_POST['patti_type']) ? $_POST['patti_type'] : '';
     $selected_digits = isset($_POST['selected_digits']) ? $_POST['selected_digits'] : '';
@@ -363,21 +312,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_patti_bet'])) {
     } elseif (empty($active_outcomes)) {
         $_SESSION['error_message'] = "Please add at least one bet to the table";
     } else {
-        // FIX: Calculate total by summing individual outcome amounts
         $total_bet_amount = 0;
         foreach ($active_outcomes as $outcome) {
             $outcome_amount = isset($outcome['amount']) ? (float)$outcome['amount'] : 0;
             $total_bet_amount += $outcome_amount;
         }
 
-        if (!is_numeric($total_bet_amount) || $total_bet_amount <= 0) {
-            $_SESSION['error_message'] = "Invalid total bet amount calculated";
-            header("Location: " . $_SERVER['PHP_SELF'] . "?type=" . urlencode($game_type));
-            exit();
-        }
-
-        error_log("Patti Bet - Type: $patti_type, Outcomes: " . count($active_outcomes) . ", Total: $total_bet_amount");
-        
         if ($total_bet_amount < 5) {
             $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
         }
@@ -389,33 +329,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_patti_bet'])) {
                 foreach ($active_outcomes as $outcome) {
                     $outcome_amount = isset($outcome['amount']) ? (float)$outcome['amount'] : 0;
                     $outcome_patti = isset($outcome['patti']) ? $outcome['patti'] : '';
-                    $outcome_type = isset($outcome['type']) ? $outcome['type'] : '';
                     
                     if ($outcome_amount <= 0 || empty($outcome_patti)) {
                         $failed_bets++;
-                        error_log("Invalid outcome data: " . json_encode($outcome));
                         continue;
                     }
                     
+                    // SIMPLIFIED FORMAT: {"123":500}
                     $individual_bet_data = [
-                        'patti_type' => $patti_type,
-                        'selected_digits' => $selected_digits,
-                        'patti_outcomes' => [$outcome],
-                        'amount_per_outcome' => $outcome_amount,
-                        'total_amount' => $outcome_amount,
-                        'game_type' => $patti_type . '_patti',
-                        'outcome_patti' => $outcome_patti,
-                        'outcome_type' => $outcome_type
+                        $outcome_patti => $outcome_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $outcome_amount, $individual_bet_data, $bet_mode, $patti_type . '_patti');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("Patti bet recorded - Patti: $outcome_patti, Type: $outcome_type, Amount: $outcome_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record patti bet for outcome: " . $outcome_patti . " with amount: " . $outcome_amount);
                     }
                 }
                 
@@ -426,12 +356,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_patti_bet'])) {
                     
                     if ($failed_bets > 0) {
                         $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                        $failed_amount = 0;
-                        foreach ($active_outcomes as $index => $outcome) {
-                            if ($index >= $successful_bets) {
-                                $failed_amount += isset($outcome['amount']) ? (float)$outcome['amount'] : 0;
-                            }
-                        }
+                        $failed_amount = $total_bet_amount - ($successful_bets * $outcome_amount);
                         if ($failed_amount > 0) {
                             refundBetAmount($user_id, $failed_amount, 'Refund for failed patti bets');
                         }
@@ -439,15 +364,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_patti_bet'])) {
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All patti bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, 'All patti bet recordings failed');
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for Patti bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -455,7 +377,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_patti_bet'])) {
                 number_format($balance, 2) . " in your account.";
         }
     }
-// Replace the existing redirect in Patti Games section
 $redirect_params = $_GET;
 $redirect_params['type'] = $game_type;
 $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
@@ -463,7 +384,7 @@ header("Location: " . $redirect_url);
 exit();
 }
 
-// MOTOR GAMES (SP Motor & DP Motor) - INDIVIDUAL OUTCOMES
+// SP/DP MOTOR - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_motor_bet']) || isset($_POST['place_dp_motor_bet']))) {
     $is_sp_motor = isset($_POST['place_sp_motor_bet']);
     $game_type_str = $is_sp_motor ? 'sp_motor' : 'dp_motor';
@@ -476,7 +397,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_motor_bet']
     
     $active_panas = json_decode($pana_combinations_json, true);
     
-    // Common validation for both motor games
     if (empty($raw_bet_amount)) {
         $_SESSION['error_message'] = "Please enter a bet amount";
     } elseif (!is_numeric($raw_bet_amount)) {
@@ -488,93 +408,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_motor_bet']
     } elseif (empty($active_panas)) {
         $_SESSION['error_message'] = "Please select at least one pana combination";
     } else {
-        // SP Motor specific validation
-        if ($is_sp_motor) {
-            if (count(array_unique(str_split($selected_digits))) != strlen($selected_digits)) {
-                $_SESSION['error_message'] = "All digits must be different for SP Motor";
-            }
-        }
-        // DP Motor specific validation
-        else {
-            if (!preg_match('/^[0-9]{4,9}$/', $selected_digits)) {
-                $_SESSION['error_message'] = "Please enter 4-9 valid digits (0-9) for DP Motor";
-            }
-        }
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($active_panas);
         
-        if (!isset($_SESSION['error_message'])) {
-            $bet_amount = (float)$raw_bet_amount;
-            $total_bet_amount = $bet_amount * count($active_panas);
-            
-            if ($total_bet_amount < 5) {
-                $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
-            }
-            elseif ($balance >= $total_bet_amount) {
-                if (deductFromWallet($user_id, $total_bet_amount, $game_name . ' Bet placed')) {
-                    $successful_bets = 0;
-                    $failed_bets = 0;
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, $game_name . ' Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($active_panas as $pana) {
+                    // SIMPLIFIED FORMAT: {"123":500}
+                    $individual_bet_data = [
+                        $pana => $bet_amount
+                    ];
                     
-                    foreach ($active_panas as $pana) {
-                        $individual_bet_data = [
-                            'selected_digits' => $selected_digits,
-                            'pana_combinations' => [$pana],
-                            'amount_per_pana' => $bet_amount,
-                            'total_amount' => $bet_amount,
-                            'game_type' => $game_type_str,
-                            'outcome_pana' => $pana
-                        ];
-                        
-                        $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, $game_type_str);
-                        
-                        if ($bet_id) {
-                            $successful_bets++;
-                            error_log("$game_name bet recorded - Pana: $pana, Amount: $bet_amount, Bet ID: $bet_id");
-                        } else {
-                            $failed_bets++;
-                            error_log("Failed to record $game_name bet for pana: " . $pana . " with amount: " . $bet_amount);
-                        }
-                    }
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, $game_type_str);
                     
-                    if ($successful_bets > 0) {
-                        $_SESSION['success_message'] = "$game_name bet placed successfully! " . 
-                            $successful_bets . " individual pana bets recorded. INR " . 
-                            number_format($total_bet_amount, 2) . " deducted from your wallet.";
-                        
-                        if ($failed_bets > 0) {
-                            $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                            $failed_amount = $bet_amount * $failed_bets;
-                            if ($failed_amount > 0) {
-                                refundBetAmount($user_id, $failed_amount, "Refund for failed $game_name bets");
-                            }
-                        }
-                        
-                        $user = getUserData($user_id);
-                        $balance = $user['balance'];
-                        $user_balance = $balance;
+                    if ($bet_id) {
+                        $successful_bets++;
                     } else {
-                        $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                        error_log("All $game_name bet recordings failed for user $user_id");
-                        refundBetAmount($user_id, $total_bet_amount, "All $game_name bet recordings failed");
+                        $failed_bets++;
                     }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "$game_name bet placed successfully! " . 
+                        $successful_bets . " individual pana bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed $game_name bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
                 } else {
-                    $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    refundBetAmount($user_id, $total_bet_amount, "All $game_name bet recordings failed");
                 }
             } else {
-                $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
-                    number_format($total_bet_amount, 2) . " but only have INR " . 
-                    number_format($balance, 2) . " in your account.";
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
             }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
         }
     }
     
-   // Replace the existing redirect in Motor Games section
-$redirect_params = $_GET;
+ $redirect_params = $_GET;
 $redirect_params['type'] = $game_type;
 $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
 header("Location: " . $redirect_url);
 exit();
 }
 
-// SP & DP GAMES - INDIVIDUAL OUTCOMES
+// SP/DP GAME - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_game_bet']) || isset($_POST['place_dp_game_bet']))) {
     $is_sp_game = isset($_POST['place_sp_game_bet']);
     $game_type_str = $is_sp_game ? 'sp_game' : 'dp_game';
@@ -613,13 +509,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_game_bet'])
                 $failed_bets = 0;
                 
                 foreach ($active_outcomes as $outcome) {
+                    // SIMPLIFIED FORMAT: {"123":500}
                     $individual_bet_data = [
-                        'selected_digit' => $selected_digit,
-                        $outcomes_field => [$outcome],
-                        'amount_per_outcome' => $bet_amount,
-                        'total_amount' => $bet_amount,
-                        'game_type' => $game_type_str,
-                        'outcome_value' => $outcome
+                        $outcome => $bet_amount
                     ];
                     
                     $record_game_type = $is_sp_game ? 'sp' : 'dp_game';
@@ -627,10 +519,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_game_bet'])
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("$game_name bet recorded - Outcome: $outcome, Amount: $bet_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record $game_name bet for outcome: " . $outcome . " with amount: " . $bet_amount);
                     }
                 }
                 
@@ -649,10 +539,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_game_bet'])
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All $game_name bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, "All $game_name bet recordings failed");
                 }
             } else {
@@ -665,15 +553,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_game_bet'])
         }
     }
     
-  // Replace the existing redirect in SP & DP Games section
-$redirect_params = $_GET;
+ $redirect_params = $_GET;
 $redirect_params['type'] = $game_type;
 $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
 header("Location: " . $redirect_url);
 exit();
 }
 
-// SET GAMES (SP Set, DP Set, TP Set) - INDIVIDUAL OUTCOMES
+// SET GAMES - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_set_bet']) || isset($_POST['place_dp_set_bet']) || isset($_POST['place_tp_set_bet']))) {
     $is_sp_set = isset($_POST['place_sp_set_bet']);
     $is_dp_set = isset($_POST['place_dp_set_bet']);
@@ -701,93 +588,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_set_bet']) 
     } elseif (empty($active_outcomes)) {
         $_SESSION['error_message'] = "Please select at least one outcome";
     } else {
-        // Additional validation for specific set types
-        if ($is_sp_set && !preg_match('/^[0-9]{3}$/', $selected_value)) {
-            $_SESSION['error_message'] = "Please enter 3 valid digits (0-9) for SP Set";
-        } elseif ($is_dp_set && !preg_match('/^[0-9]{3}$/', $selected_value)) {
-            $_SESSION['error_message'] = "Please enter 3 valid digits (0-9) for DP Set";
-        } elseif ($is_tp_set && !in_array($selected_value, ['0','1','2','3','4','5','6','7','8','9'])) {
-            $_SESSION['error_message'] = "Please select a valid digit (0-9) for TP Set";
-        }
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($active_outcomes);
         
-        if (!isset($_SESSION['error_message'])) {
-            $bet_amount = (float)$raw_bet_amount;
-            $total_bet_amount = $bet_amount * count($active_outcomes);
-            
-            if ($total_bet_amount < 5) {
-                $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
-            }
-            elseif ($balance >= $total_bet_amount) {
-                if (deductFromWallet($user_id, $total_bet_amount, $game_name . ' Bet placed')) {
-                    $successful_bets = 0;
-                    $failed_bets = 0;
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, $game_name . ' Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($active_outcomes as $outcome) {
+                    // SIMPLIFIED FORMAT: {"123":500}
+                    $individual_bet_data = [
+                        $outcome => $bet_amount
+                    ];
                     
-                    foreach ($active_outcomes as $outcome) {
-                        if ($is_tp_set) {
-                            $individual_bet_data = [
-                                'selected_digit' => $selected_value,
-                                $outcomes_field => [$outcome],
-                                'amount_per_outcome' => $bet_amount,
-                                'total_amount' => $bet_amount,
-                                'game_type' => $game_type_str,
-                                'outcome_value' => $outcome
-                            ];
-                        } else {
-                            $individual_bet_data = [
-                                'selected_digits' => $selected_value,
-                                $outcomes_field => [$outcome],
-                                'amount_per_outcome' => $bet_amount,
-                                'total_amount' => $bet_amount,
-                                'game_type' => $game_type_str,
-                                'outcome_value' => $outcome
-                            ];
-                        }
-                        
-                        $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, $game_type_str);
-                        
-                        if ($bet_id) {
-                            $successful_bets++;
-                            error_log("$game_name bet recorded - Outcome: $outcome, Amount: $bet_amount, Bet ID: $bet_id");
-                        } else {
-                            $failed_bets++;
-                            error_log("Failed to record $game_name bet for outcome: " . $outcome . " with amount: " . $bet_amount);
-                        }
-                    }
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, $game_type_str);
                     
-                    if ($successful_bets > 0) {
-                        $_SESSION['success_message'] = "$game_name bet placed successfully! " . 
-                            $successful_bets . " individual outcomes recorded. INR " . 
-                            number_format($total_bet_amount, 2) . " deducted from your wallet.";
-                        
-                        if ($failed_bets > 0) {
-                            $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                            $failed_amount = $bet_amount * $failed_bets;
-                            if ($failed_amount > 0) {
-                                refundBetAmount($user_id, $failed_amount, "Refund for failed $game_name bets");
-                            }
-                        }
-                        
-                        $user = getUserData($user_id);
-                        $balance = $user['balance'];
-                        $user_balance = $balance;
+                    if ($bet_id) {
+                        $successful_bets++;
                     } else {
-                        $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                        error_log("All $game_name bet recordings failed for user $user_id");
-                        refundBetAmount($user_id, $total_bet_amount, "All $game_name bet recordings failed");
+                        $failed_bets++;
                     }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "$game_name bet placed successfully! " . 
+                        $successful_bets . " individual outcomes recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed $game_name bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
                 } else {
-                    $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                    error_log("Wallet deduction failed for $game_name bet - user $user_id");
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    refundBetAmount($user_id, $total_bet_amount, "All $game_name bet recordings failed");
                 }
             } else {
-                $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
-                    number_format($total_bet_amount, 2) . " but only have INR " . 
-                    number_format($balance, 2) . " in your account.";
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
             }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
         }
     }
     
-// Replace the existing redirect in SP & DP Games section
 $redirect_params = $_GET;
 $redirect_params['type'] = $game_type;
 $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
@@ -795,7 +650,7 @@ header("Location: " . $redirect_url);
 exit();
 }
 
-// ENHANCED COMMON GAME WITH SP/DP/SPDPT OPTIONS
+// COMMON GAME - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_common_bet'])) {
     $common_type = isset($_POST['common_type']) ? $_POST['common_type'] : 'spdpt';
     $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
@@ -803,57 +658,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_common_bet'])) 
     $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
     // Define pannas for each type
-    $sp_pannas = [
-        // 36 Single Patti pannas
-        '123', '124', '125', '126', '127', '128', '129', '134', '135', '136',
-        '137', '138', '139', '145', '146', '147', '148', '149', '156', '157',
-        '158', '159', '167', '168', '169', '178', '179', '189', '234', '235',
-        '236', '237', '238', '239', '245', '246', '247', '248', '249', '256',
-        '257', '258', '259', '267', '268', '269', '278', '279', '289', '345',
-        '346', '347', '348', '349', '356', '357', '358', '359', '367', '368',
-        '369', '378', '379', '389', '456', '457', '458', '459', '467', '468',
-        '469', '478', '479', '489', '567', '568', '569', '578', '579', '589',
-        '678', '679', '689', '789'
-    ];
-
-    $dp_pannas = [
-        // 18 Double Patti pannas
-        '112', '113', '114', '115', '116', '117', '118', '119',
-        '122', '133', '144', '155', '166', '177', '188', '199',
-        '223', '224', '225', '226', '227', '228', '229', '233',
-        '244', '255', '266', '277', '288', '299', '334', '335',
-        '336', '337', '338', '339', '344', '355', '366', '377',
-        '388', '399', '445', '446', '447', '448', '449', '455',
-        '466', '477', '488', '499', '556', '557', '558', '559',
-        '566', '577', '588', '599', '667', '668', '669', '677',
-        '688', '699', '778', '779', '788', '799', '889', '899'
-    ];
-
-    $spdpt_pannas = [
-        // Your existing 55 SPDPT pannas
-        '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
-        '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
-        '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
-        '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
-        '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
-        '158', '167', '239', '248', '257', '347', '356', '590', '680', '789'
-    ];
+    $sp_pannas = [/* your 36 SP pannas */];
+    $dp_pannas = [/* your 18 DP pannas */];
+    $spdpt_pannas = [/* your 55 SPDPT pannas */];
     
-    // Select pannas based on common type
     switch($common_type) {
-        case 'sp':
-            $pannas = $sp_pannas;
-            $type_name = 'SP';
-            break;
-        case 'dp':
-            $pannas = $dp_pannas;
-            $type_name = 'DP';
-            break;
-        case 'spdpt':
-        default:
-            $pannas = $spdpt_pannas;
-            $type_name = 'SPDPT';
-            break;
+        case 'sp': $pannas = $sp_pannas; $type_name = 'SP'; break;
+        case 'dp': $pannas = $dp_pannas; $type_name = 'DP'; break;
+        case 'spdpt': default: $pannas = $spdpt_pannas; $type_name = 'SPDPT'; break;
     }
     
     if (empty($raw_bet_amount)) {
@@ -877,25 +689,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_common_bet'])) 
                 $failed_bets = 0;
                 
                 foreach ($pannas as $panna) {
+                    // SIMPLIFIED FORMAT: {"123":500}
                     $individual_bet_data = [
-                        'selected_digit' => $selected_digit,
-                        'common_type' => $common_type,
-                        'common_outcomes' => [$panna],
-                        'amount_per_panna' => $bet_amount,
-                        'total_amount' => $bet_amount,
-                        'game_type' => 'common',
-                        'outcome_panna' => $panna,
-                        'type_name' => $type_name
+                        $panna => $bet_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'common');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("Common $type_name bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record Common $type_name bet for panna: " . $panna . " with amount: " . $bet_amount);
                     }
                 }
                 
@@ -914,15 +718,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_common_bet'])) 
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All Common $type_name bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, "All Common $type_name bet recordings failed");
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for Common $type_name bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -931,18 +732,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_common_bet'])) 
         }
     }
     
-    $redirect_params = $_GET;
-    $redirect_params['type'] = $game_type;
-    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
-    header("Location: " . $redirect_url);
-    exit();
+  $redirect_params = $_GET;
+$redirect_params['type'] = $game_type;
+$redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+header("Location: " . $redirect_url);
+exit();
 }
-// ROWN GAME - SIMPLIFIED (Fixed 10 pannas)
+
+// ROWN GAME - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_rown_bet'])) {
     $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
     $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
-    // Fixed Rown panna combinations
     $rown_pannas = ['123', '234', '345', '456', '567', '678', '789', '890', '901', '012'];
     
     if (empty($raw_bet_amount)) {
@@ -964,22 +765,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_rown_bet'])) {
                 $failed_bets = 0;
                 
                 foreach ($rown_pannas as $panna) {
+                    // SIMPLIFIED FORMAT: {"123":500}
                     $individual_bet_data = [
-                        'rown_pannas' => [$panna],
-                        'amount_per_panna' => $bet_amount,
-                        'total_amount' => $bet_amount,
-                        'game_type' => 'rown',
-                        'outcome_panna' => $panna
+                        $panna => $bet_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'rown');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("Rown bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record rown bet for panna: " . $panna . " with amount: " . $bet_amount);
                     }
                 }
                 
@@ -998,15 +794,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_rown_bet'])) {
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All rown bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, "All rown bet recordings failed");
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for rown bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -1014,131 +807,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_rown_bet'])) {
                 number_format($balance, 2) . " in your account.";
         }
     }
-    
-    $redirect_params = $_GET;
-    $redirect_params['type'] = $game_type;
-    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
-    header("Location: " . $redirect_url);
-    exit();
+$redirect_params = $_GET;
+$redirect_params['type'] = $game_type;
+$redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+header("Location: " . $redirect_url);
+exit();
 }
-// ABR-CUT GAME - CORRECT 90 PANNAS (with proper 0=10 formatting)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_abr_cut_bet'])) {
-    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
-    $abr_cut_outcomes_json = isset($_POST['abr_cut_outcomes']) ? $_POST['abr_cut_outcomes'] : '[]';
-    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
-    
-    $active_outcomes = json_decode($abr_cut_outcomes_json, true);
-    
-    // CORRECT 90 Abr-Cut pannas (with proper 0=10 formatting)
-    $correct_abr_cut_pannas = [
-        '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
-        '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
-        '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
-        '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
-        '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
-        '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
-        // Additional 30 pannas to make it 90
-        '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
-        '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
-        '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
-    ];
-    
-    // Validate that we have exactly 90 pannas
-    if (count($correct_abr_cut_pannas) !== 90) {
-        error_log("ERROR: Abr-Cut pannas count is " . count($correct_abr_cut_pannas) . ", expected 90");
-        $_SESSION['error_message'] = "System error: Invalid panna count. Please try again.";
-        header("Location: " . $_SERVER['PHP_SELF'] . "?type=abr_cut");
-        exit();
-    }
-    
-    if (empty($raw_bet_amount)) {
-        $_SESSION['error_message'] = "Please enter a bet amount";
-    } elseif (!is_numeric($raw_bet_amount)) {
-        $_SESSION['error_message'] = "Please enter a valid numeric amount";
-    } elseif ((float)$raw_bet_amount <= 0) {
-        $_SESSION['error_message'] = "Bet amount must be greater than zero";
-    } elseif (empty($active_outcomes)) {
-        $_SESSION['error_message'] = "No panna outcomes found";
-    } else {
-        $bet_amount = (float)$raw_bet_amount;
-        $total_bet_amount = $bet_amount * count($active_outcomes);
-        
-        if ($total_bet_amount < 5) {
-            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
-        }
-        elseif ($balance >= $total_bet_amount) {
-            if (deductFromWallet($user_id, $total_bet_amount, 'Abr-Cut Bet placed')) {
-                $successful_bets = 0;
-                $failed_bets = 0;
-                
-                foreach ($active_outcomes as $outcome) {
-                    $individual_bet_data = [
-                        'abr_cut_outcomes' => [$outcome],
-                        'amount_per_outcome' => $bet_amount,
-                        'total_amount' => $bet_amount,
-                        'game_type' => 'abr_cut',
-                        'outcome_panna' => $outcome
-                    ];
-                    
-                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'abr_cut');
-                    
-                    if ($bet_id) {
-                        $successful_bets++;
-                        error_log("Abr-Cut bet recorded - Panna: $outcome, Amount: $bet_amount, Bet ID: $bet_id");
-                    } else {
-                        $failed_bets++;
-                        error_log("Failed to record abr-cut bet for panna: " . $outcome . " with amount: " . $bet_amount);
-                    }
-                }
-                
-                if ($successful_bets > 0) {
-                    $_SESSION['success_message'] = "Abr-Cut bet placed successfully! " . 
-                        $successful_bets . " panna bets recorded. INR " . 
-                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
-                    
-                    if ($failed_bets > 0) {
-                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                        $failed_amount = $bet_amount * $failed_bets;
-                        if ($failed_amount > 0) {
-                            refundBetAmount($user_id, $failed_amount, "Refund for failed abr-cut bets");
-                        }
-                    }
-                    
-                    $user = getUserData($user_id);
-                    $balance = $user['balance'];
-                    $user_balance = $balance;
-                } else {
-                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All abr-cut bet recordings failed for user $user_id");
-                    refundBetAmount($user_id, $total_bet_amount, "All abr-cut bet recordings failed");
-                }
-            } else {
-                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for abr-cut bet - user $user_id");
-            }
-        } else {
-            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
-                number_format($total_bet_amount, 2) . " but only have INR " . 
-                number_format($balance, 2) . " in your account.";
-        }
-    }
-    
-    $redirect_params = $_GET;
-    $redirect_params['type'] = $game_type;
-    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
-    header("Location: " . $redirect_url);
-    exit();
-}
-// EKI GAME - ODD DIGITS - 10 separate panna combinations
+
+// EKI GAME - Store as {"137":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_eki_bet'])) {
     $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
     $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
-    // 10 separate odd digit panna combinations
-    $eki_pannas = [
-        '137', '579', '139', '359', '157', 
-        '179', '379', '159', '135', '357'
-    ];
+    $eki_pannas = ['137', '579', '139', '359', '157', '179', '379', '159', '135', '357'];
     
     if (empty($raw_bet_amount)) {
         $_SESSION['error_message'] = "Please enter a bet amount";
@@ -1159,22 +840,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_eki_bet'])) {
                 $failed_bets = 0;
                 
                 foreach ($eki_pannas as $panna) {
+                    // SIMPLIFIED FORMAT: {"137":500}
                     $individual_bet_data = [
-                        'eki_pannas' => [$panna],
-                        'amount_per_panna' => $bet_amount,
-                        'total_amount' => $bet_amount,
-                        'game_type' => 'eki',
-                        'outcome_panna' => $panna
+                        $panna => $bet_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'eki');
                     
                     if ($bet_id) {
                         $successful_bets++;
-                        error_log("Eki bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
-                        error_log("Failed to record eki bet for panna: " . $panna . " with amount: " . $bet_amount);
                     }
                 }
                 
@@ -1193,15 +869,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_eki_bet'])) {
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
-                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All eki bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, "All eki bet recordings failed");
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for eki bet - user $user_id");
             }
         } else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
@@ -1210,22 +883,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_eki_bet'])) {
         }
     }
     
-    $redirect_params = $_GET;
-    $redirect_params['type'] = $game_type;
-    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
-    header("Location: " . $redirect_url);
-    exit();
+$redirect_params = $_GET;
+$redirect_params['type'] = $game_type;
+$redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+header("Location: " . $redirect_url);
+exit();
 }
-// BKKI GAME - EVEN DIGITS - 10 separate panna combinations
+
+// BKKI GAME - Store as {"280":500} with correct panna numbers
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
     $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
     $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
-    // 10 separate even digit panna combinations
-    $bkki_pannas = [
-        '028', '046', '246', '268', '468', 
-        '048', '068', '248', '024', '468'
-    ];
+    // CORRECTED BKKI PANNAS - Use the actual panna numbers from your table
+    $bkki_pannas = ['280', '460', '246', '268', '468', '480', '680', '248', '240', '260'];
     
     if (empty($raw_bet_amount)) {
         $_SESSION['error_message'] = "Please enter a bet amount";
@@ -1246,12 +917,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
                 $failed_bets = 0;
                 
                 foreach ($bkki_pannas as $panna) {
+                    // SIMPLIFIED FORMAT: {"280":500} - using actual panna numbers
                     $individual_bet_data = [
-                        'bkki_pannas' => [$panna],
-                        'amount_per_panna' => $bet_amount,
-                        'total_amount' => $bet_amount,
-                        'game_type' => 'bkki',
-                        'outcome_panna' => $panna
+                        $panna => $bet_amount
                     ];
                     
                     $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'bkki');
@@ -1303,6 +971,163 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
     header("Location: " . $redirect_url);
     exit();
 }
+
+// ABR-CUT GAME - Store as {"127":500}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_abr_cut_bet'])) {
+    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
+    $abr_cut_outcomes_json = isset($_POST['abr_cut_outcomes']) ? $_POST['abr_cut_outcomes'] : '[]';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
+    $active_outcomes = json_decode($abr_cut_outcomes_json, true);
+    $correct_abr_cut_pannas = [/* your 90 abr-cut pannas */];
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } elseif (empty($active_outcomes)) {
+        $_SESSION['error_message'] = "No panna outcomes found";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($active_outcomes);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Abr-Cut Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($active_outcomes as $outcome) {
+                    // SIMPLIFIED FORMAT: {"127":500}
+                    $individual_bet_data = [
+                        $outcome => $bet_amount
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'abr_cut');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                    } else {
+                        $failed_bets++;
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "Abr-Cut bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed abr-cut bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    refundBetAmount($user_id, $total_bet_amount, "All abr-cut bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+ // BKKI GAME - Store as {"280":500} with correct panna numbers
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
+    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
+    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    
+    // CORRECTED BKKI PANNAS - Use the actual panna numbers from your table
+    $bkki_pannas = ['280', '460', '246', '268', '468', '480', '680', '248', '240', '260'];
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($bkki_pannas);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Bkki Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($bkki_pannas as $panna) {
+                    // SIMPLIFIED FORMAT: {"280":500} - using actual panna numbers
+                    $individual_bet_data = [
+                        $panna => $bet_amount
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'bkki');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                        error_log("Bkki bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
+                    } else {
+                        $failed_bets++;
+                        error_log("Failed to record bkki bet for panna: " . $panna . " with amount: " . $bet_amount);
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $_SESSION['success_message'] = "Bkki bet placed successfully! " . 
+                        $successful_bets . " panna bets recorded. INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed bkki bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                    $user_balance = $balance;
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    error_log("All bkki bet recordings failed for user $user_id");
+                    refundBetAmount($user_id, $total_bet_amount, "All bkki bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                error_log("Wallet deduction failed for bkki bet - user $user_id");
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
+}
+}
+
 // Function to get user data
 function getUserData($user_id) {
     global $conn;
@@ -1573,25 +1398,24 @@ function recordBet($user_id, $game_type_id, $amount, $bet_data, $mode, $game_typ
         // Use the correct game_type enum value based on the actual game being played
         $game_type_enum = mapGameTypeToEnum($game_type);
         
-        // IMPORTANT: Use the $mode parameter in the SQL query (5th parameter)
         $stmt = $conn->prepare("INSERT INTO bets (user_id, game_session_id, game_type_id, game_type, bet_mode, numbers_played, amount, potential_win, status, game_name, open_time, close_time, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, NOW())");
         
         if (!$stmt) {
             throw new Exception("Prepare failed: " . $conn->error);
         }
         
-        // Log the bet details for debugging - including the mode
-        error_log("Recording bet - User: $user_id, GameTypeID: $game_type_id, Amount: $amount, Mode: $mode, PotentialWin: $potential_win, GameTypeEnum: $game_type_enum, Game: $game_name, Open: $open_time, Close: $close_time");
+        // Log the bet details for debugging
+        error_log("Recording bet - User: $user_id, GameTypeID: $game_type_id, Amount: $amount, PotentialWin: $potential_win, GameTypeEnum: $game_type_enum, Game: $game_name, Open: $open_time, Close: $close_time");
         
-        // Bind parameters correctly - $mode is the 5th parameter
+        // Bind parameters correctly
         $stmt->bind_param("iiisssddsss", $user_id, $game_session_id, $game_type_id, $game_type_enum, $mode, $numbers_played, $amount, $potential_win, $game_name, $open_time, $close_time);
         
         if ($stmt->execute()) {
             $bet_id = $stmt->insert_id;
             $stmt->close();
             
-            // Log successful bet recording with mode info
-            error_log("Bet recorded successfully - ID: $bet_id, User: $user_id, Amount: $amount, Mode: $mode, Game Type ID: $game_type_id, Game Type: $game_type, Potential Win: $potential_win, Game: $game_name");
+            // Log successful bet recording with game type info
+            error_log("Bet recorded successfully - ID: $bet_id, User: $user_id, Amount: $amount, Game Type ID: $game_type_id, Game Type: $game_type, Potential Win: $potential_win, Game: $game_name");
             
             return $bet_id;
         } else {
@@ -1622,7 +1446,6 @@ function mapGameTypeToEnum($game_type) {
         'tp_set' => 'tp_set',
         'common' => 'common',
         'series' => 'series',
-           'abr_cut' => 'abr_cut',
           'rown' => 'rown',
            'eki' => 'eki',      // ADD THIS
         'bkki' => 'bkki' 
@@ -1681,7 +1504,9 @@ function calculatePotentialWin($game_type_id, $amount, $bet_data) {
 include 'includes/header.php';          
 
 ?>
-
+<style>
+    
+</style>
 
 <link rel="stylesheet" href="style.css">
 
@@ -1724,10 +1549,9 @@ include 'includes/header.php';
         <div class="alert alert-error"><?php echo $error_message; ?></div>
     <?php endif; ?>
     
-<!-- Updated Betting Header - FIXED -->
+  <!-- Updated Betting Header -->
 <div class="betting-header">
     <div class="header-left">
-        <!-- SHOW MODE TOGGLE FOR ALL GAMES EXCEPT JODI -->
         <?php if ($game_type !== 'jodi'): ?>
         <div class="control-group">
             <div class="control-label">Open / Close</div>
@@ -1746,15 +1570,9 @@ include 'includes/header.php';
     
     <div class="header-right">
         <div class="control-group">
-            <div class="control-label">Game Type</div>
+            <div class="control-label"></div>
             <select class="bet-type-select" id="bet-type" name="bet_type">
-                <?php foreach ($game_types as $type): ?>
-                    <option value="<?php echo $type['id']; ?>" 
-                            data-code="<?php echo $type['code']; ?>"
-                            <?php echo $type['code'] === $game_type ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($type['name']); ?>
-                    </option>
-                <?php endforeach; ?>
+                <!-- Game type options will be populated here -->
             </select>
         </div>
     </div>
@@ -1878,7 +1696,7 @@ include 'includes/header.php';
             <input type="hidden" name="selected_digit" id="form-single-ank-digit">
             <input type="hidden" name="single_ank_outcomes" id="form-single-ank-outcomes" value="[]">
             <input type="hidden" name="bet_amount" id="form-single-ank-bet-amount">
-            <input type="hidden" name="mode" id="form-single-ank-mode" value="">
+            <input type="hidden" name="mode" id="form-single-ank-mode" value="open">
             <input type="hidden" name="place_single_ank_bet" value="1">
             
             <button type="submit" class="action-btn place-bet-btn" id="place-single-ank-bet-btn" disabled>
@@ -1888,23 +1706,12 @@ include 'includes/header.php';
     </div>
 </div>
 <!-- Jodi Interface -->
-<!-- Jodi Interface - FIXED VERSION -->
 <div class="jodi-interface" style="<?php echo $game_type === 'jodi' ? 'display: block;' : 'display: none;'; ?>">
     <div class="jodi-container">
+
         
         <div class="set-info">
             <p>Select two digits, enter amount and add bets to the table</p>
-        </div>
-        
-        <!-- ADD MODE TOGGLE FOR JODI -->
-        <div class="jodi-mode-controls" style="margin-bottom: 20px;">
-            <div class="control-group">
-                <div class="control-label">Open / Close</div>
-                <div class="open-close-toggle">
-                    <div class="toggle-option active" id="jodi-open-toggle">Open</div>
-                    <div class="toggle-option" id="jodi-close-toggle">Close</div>
-                </div>
-            </div>
         </div>
         
         <div class="jodi-controls">
@@ -2950,272 +2757,176 @@ include 'includes/header.php';
         </div>
     </footer>
 <script src="includes/script.js"></script>
+<!-- script that hepl to hide elements of all games -->
 <script>
-// Global mode management
-let currentMode = 'open';
+function toggleGameUI(gameType) {
+    const isSingleAnk = gameType === 'single_ank';
+    const isJodi = gameType === 'jodi';
+    const isPatti = ['single_patti', 'double_patti', 'triple_patti'].includes(gameType);
+    const isSpMotor = gameType === 'sp_motor';
+    const isDpMotor = gameType === 'dp_motor';
+    const isSpGame = gameType === 'sp_game';
+    const isDpGame = gameType === 'dp_game';
+    const isSpSet = gameType === 'sp_set';
+    const isDpSet = gameType === 'dp_set';
+    const isTpSet = gameType === 'tp_set';
+    const isCommon = gameType === 'common';
+    const isSeries = gameType === 'series';
+    const isRown = gameType === 'rown'; // ADD THIS LINE
+    const isEki = gameType === 'eki';      // ADD THIS
+    const isBkki = gameType === 'bkki';    // ADD THIS
+   const isAbrCut = gameType === 'abr_cut'; // ADD THIS LINE
+    
+    const isSpecialGame = isSingleAnk || isJodi || isPatti || isSpMotor || isDpMotor || 
+                         isSpGame || isDpGame || isSpSet || isDpSet || isTpSet || 
+                         isCommon || isSeries || isRown || isEki || isBkki || isAbrCut; // UPDATE THIS
 
-// Consolidated Mode Toggle System - FIXED VERSION
-function initializeModeToggle() {
-    // Initialize main header toggle
-    const openToggle = document.getElementById('open-toggle');
-    const closeToggle = document.getElementById('close-toggle');
-    
-    if (openToggle && closeToggle) {
-        openToggle.classList.add('active');
-        closeToggle.classList.remove('active');
-        currentMode = 'open';
-        
-        openToggle.addEventListener('click', function() {
-            if (!this.classList.contains('active')) {
-                setActiveMode('open');
-            }
-        });
-        
-        closeToggle.addEventListener('click', function() {
-            if (!this.classList.contains('active')) {
-                setActiveMode('close');
-            }
-        });
-    }
-    
-    // Initialize Jodi mode toggle
-    initializeJodiModeToggle();
-    
-    // Update all mode fields
-    updateAllModeFields(currentMode);
-}
-
-// Jodi Mode Toggle System - FIXED
-function initializeJodiModeToggle() {
-    const openToggle = document.getElementById('jodi-open-toggle');
-    const closeToggle = document.getElementById('jodi-close-toggle');
-    
-    if (openToggle && closeToggle) {
-        openToggle.classList.add('active');
-        closeToggle.classList.remove('active');
-        
-        openToggle.addEventListener('click', function() {
-            if (!this.classList.contains('active')) {
-                setActiveMode('open');
-            }
-        });
-        
-        closeToggle.addEventListener('click', function() {
-            if (!this.classList.contains('active')) {
-                setActiveMode('close');
-            }
-        });
-    }
-}
-
-// Set active mode across all toggles
-function setActiveMode(mode) {
-    currentMode = mode;
-    
-    // Update main header toggle
-    const mainOpenToggle = document.getElementById('open-toggle');
-    const mainCloseToggle = document.getElementById('close-toggle');
-    
-    if (mainOpenToggle && mainCloseToggle) {
-        if (mode === 'open') {
-            mainOpenToggle.classList.add('active');
-            mainCloseToggle.classList.remove('active');
-        } else {
-            mainCloseToggle.classList.add('active');
-            mainOpenToggle.classList.remove('active');
-        }
-    }
-    
-    // Update Jodi toggle
-    const jodiOpenToggle = document.getElementById('jodi-open-toggle');
-    const jodiCloseToggle = document.getElementById('jodi-close-toggle');
-    
-    if (jodiOpenToggle && jodiCloseToggle) {
-        if (mode === 'open') {
-            jodiOpenToggle.classList.add('active');
-            jodiCloseToggle.classList.remove('active');
-        } else {
-            jodiCloseToggle.classList.add('active');
-            jodiOpenToggle.classList.remove('active');
-        }
-    }
-    
-    // Update all mode fields
-    updateAllModeFields(mode);
-}
-
-// Update ALL mode hidden fields
-function updateAllModeFields(mode) {
-    const modeFields = [
-        'form-single-ank-mode',
-        'form-jodi-mode', 
-        'form-patti-mode',
-        'form-sp-motor-mode',
-        'form-dp-motor-mode',
-        'form-sp-game-mode',
-        'form-dp-game-mode',
-        'form-sp-set-mode',
-        'form-dp-set-mode',
-        'form-tp-set-mode',
-        'form-common-mode',
-        'form-series-mode',
-        'form-rown-mode',
-        'form-abr-cut-mode',
-        'form-eki-mode',
-        'form-bkki-mode'
+    const elementsToToggle = [
+        '.chips-container',
+        '#numbers-grid',
+        '.bet-total',
+        '.action-buttons',
+        '#bet-form:not(#single-ank-form):not(#jodi-form):not(#patti-form):not(#sp-motor-form):not(#dp-motor-form):not(#sp-game-form):not(#dp-game-form):not(#sp-set-form):not(#dp-set-form):not(#tp-set-form):not(#common-form):not(#series-form):not(#rown-form)'
     ];
     
-    modeFields.forEach(fieldId => {
-        const field = document.getElementById(fieldId);
-        if (field) {
-            field.value = mode;
-            console.log(`Updated ${fieldId} to: ${mode}`);
-        }
+    elementsToToggle.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => {
+            el.style.display = isSpecialGame ? 'none' : '';
+        });
     });
-}
-
-
-// function toggleGameUI(gameType) {
-//     const isSingleAnk = gameType === 'single_ank';
-//     const isJodi = gameType === 'jodi';
-//     const isPatti = ['single_patti', 'double_patti', 'triple_patti'].includes(gameType);
-//     const isSpMotor = gameType === 'sp_motor';
-//     const isDpMotor = gameType === 'dp_motor';
-//     const isSpGame = gameType === 'sp_game';
-//     const isDpGame = gameType === 'dp_game';
-//     const isSpSet = gameType === 'sp_set';
-//     const isDpSet = gameType === 'dp_set';
-//     const isTpSet = gameType === 'tp_set'; 
-//     const isCommon = gameType === 'common'; 
-//     const isSeries = gameType === 'series'; 
-//     const isRown = gameType === 'rown';
-//     const isEki = gameType === 'eki';
-//     const isBkki = gameType === 'bkki';
-//     const isAbrCut = gameType === 'abr_cut';
     
-//     const isSpecialGame = isSingleAnk || isJodi || isPatti || isSpMotor || isDpMotor || isSpGame || isDpGame || isSpSet || isDpSet || isTpSet || isCommon || isSeries || isRown || isEki || isBkki || isAbrCut;
-
-//     const elementsToToggle = [
-//         '.chips-container',
-//         '#numbers-grid',
-//         '.bet-total',
-//         '.action-buttons',
-//         '#bet-form:not(#single-ank-form):not(#jodi-form):not(#patti-form):not(#sp-motor-form):not(#dp-motor-form):not(#sp-game-form):not(#dp-game-form):not(#sp-set-form):not(#dp-set-form):not(#tp-set-form):not(#common-form):not(#series-form):not(#rown-form):not(#abr-cut-form):not(#eki-form):not(#bkki-form)'
-//     ];
+    // Show/hide regular betting interface
+    const regularInterface = document.querySelector('.regular-betting-interface');
+    if (regularInterface) {
+        regularInterface.style.display = isSpecialGame ? 'none' : 'block';
+    }
     
-//     elementsToToggle.forEach(selector => {
-//         const elements = document.querySelectorAll(selector);
-//         elements.forEach(el => {
-//             el.style.display = isSpecialGame ? 'none' : '';
-//         });
-//     });
-    
-    // Show Single Ank interface
+    // Show Single Ank interface if it's Single Ank game
     const singleAnkInterface = document.querySelector('.single-ank-interface');
     if (singleAnkInterface) {
         singleAnkInterface.style.display = isSingleAnk ? 'block' : 'none';
+        
+        if (isSingleAnk) {
+            initializeSingleAnkGame();
+        }
     }
     
-    // Show Jodi interface
+    // Show Jodi interface if it's Jodi game
     const jodiInterface = document.querySelector('.jodi-interface');
     if (jodiInterface) {
         jodiInterface.style.display = isJodi ? 'block' : 'none';
+        
+        if (isJodi) {
+            initializeJodiGame();
+        }
     }
     
-    // Show Patti interface
+    // Show Patti interface if it's any patti game
     const pattiInterface = document.querySelector('.patti-interface');
     if (pattiInterface) {
         pattiInterface.style.display = isPatti ? 'block' : 'none';
+        
+        if (isPatti) {
+            initializePattiGame();
+        }
     }
     
-    // Show SP Motor interface
+    // Show SP Motor interface if it's SP Motor game
     const spMotorInterface = document.querySelector('.sp-motor-interface');
     if (spMotorInterface) {
         spMotorInterface.style.display = isSpMotor ? 'block' : 'none';
     }
     
-    // Show DP Motor interface
+    // Show DP Motor interface if it's DP Motor game
     const dpMotorInterface = document.querySelector('.dp-motor-interface');
     if (dpMotorInterface) {
         dpMotorInterface.style.display = isDpMotor ? 'block' : 'none';
     }
     
-    // Show SP Game interface
+    // Show SP Game interface if it's SP Game
     const spGameInterface = document.querySelector('.sp-game-interface');
     if (spGameInterface) {
         spGameInterface.style.display = isSpGame ? 'block' : 'none';
     }
     
-    // Show DP Game interface
+    // Show DP Game interface if it's DP Game
     const dpGameInterface = document.querySelector('.dp-game-interface');
     if (dpGameInterface) {
         dpGameInterface.style.display = isDpGame ? 'block' : 'none';
     }
     
-    // Show SP Set interface
+    // Show SP Set interface if it's SP Set
     const spSetInterface = document.querySelector('.sp-set-interface');
     if (spSetInterface) {
         spSetInterface.style.display = isSpSet ? 'block' : 'none';
     }
     
-    // Show DP Set interface
+    // Show DP Set interface if it's DP Set
     const dpSetInterface = document.querySelector('.dp-set-interface');
     if (dpSetInterface) {
         dpSetInterface.style.display = isDpSet ? 'block' : 'none';
     }
     
-    // Show TP Set interface
+    // Show TP Set interface if it's TP Set game
     const tpSetInterface = document.querySelector('.tp-set-interface');
     if (tpSetInterface) {
         tpSetInterface.style.display = isTpSet ? 'block' : 'none';
     }
     
-    // Show Common interface
+    // Show Common interface if it's Common game
     const commonInterface = document.querySelector('.common-interface');
     if (commonInterface) {
         commonInterface.style.display = isCommon ? 'block' : 'none';
-    } 
+    }
     
-    // Show Series interface
+    // Show Series interface if it's Series game
     const seriesInterface = document.querySelector('.series-interface');
     if (seriesInterface) {
         seriesInterface.style.display = isSeries ? 'block' : 'none';
     }
     
-    // Show Rown interface
+    // Show Rown interface if it's Rown game - ADD THIS SECTION
     const rownInterface = document.querySelector('.rown-interface');
     if (rownInterface) {
         rownInterface.style.display = isRown ? 'block' : 'none';
+        
+        // Initialize Rown game if it's shown
+        if (isRown) {
+            initializeRownGame();
+        }
     }
-    
-    // Show Abr-Cut interface
+        // Show Abr-Cut interface if it's Abr-Cut game
     const abrCutInterface = document.querySelector('.abr-cut-interface');
     if (abrCutInterface) {
         abrCutInterface.style.display = isAbrCut ? 'block' : 'none';
+        
+        if (isAbrCut) {
+            initializeAbrCutGame();
+        }
     }
-    
-    // Show Eki interface
+      // Show Eki interface if it's Eki game
     const ekiInterface = document.querySelector('.eki-interface');
     if (ekiInterface) {
         ekiInterface.style.display = isEki ? 'block' : 'none';
+        
+        if (isEki) {
+            initializeEkiGame();
+        }
     }
     
-    // Show Bkki interface
+    // Show Bkki interface if it's Bkki game
     const bkkiInterface = document.querySelector('.bkki-interface');
     if (bkkiInterface) {
         bkkiInterface.style.display = isBkki ? 'block' : 'none';
-    }
-    
-    // Initialize mode toggles based on game type
-    if (isJodi) {
-        initializeJodiModeToggle();
-    } else {
-        initializeModeToggle();
+        
+        if (isBkki) {
+            initializeBkkiGame();
+        }
     }
 }
-
-// Also update the bet type change handler to handle all games
-document.addEventListener('DOMContentLoaded', function() {
+   // Also update the bet type change handler to handle DP Set
+  document.addEventListener('DOMContentLoaded', function() {
     const gameType = '<?php echo $game_type; ?>';
     toggleGameUI(gameType);
     
@@ -3231,44 +2942,27 @@ document.addEventListener('DOMContentLoaded', function() {
         // Redirect to the new game type
         window.location.href = `<?php echo $_SERVER['PHP_SELF']; ?>?type=${newGameType}`;
     });
-});
+   });
 
-// Update the updateNumbersGrid function to handle all special games
-function updateNumbersGrid(gameType) {
+   // Update the updateNumbersGrid function to handle DP Set
+   function updateNumbersGrid(gameType) {
     const grid = document.getElementById('numbers-grid');
     
-    // For all special games, we don't need to populate the number grid
-    const specialGames = ['single_ank', 'jodi', 'single_patti', 'double_patti', 'triple_patti', 'sp_motor', 'dp_motor', 'sp_game', 'dp_game', 'sp_set', 'dp_set', 'tp_set', 'common', 'series', 'rown', 'eki', 'bkki', 'abr_cut'];
-    
-    if (specialGames.includes(gameType)) {
+    // For SP/DP Motor, SP/DP Game, and SP/DP Set, we don't need to populate the number grid
+    if (['sp_motor', 'dp_motor', 'sp_game', 'dp_game', 'sp_set', 'dp_set'].includes(gameType)) {
         grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 2rem;">' +
-                         `<p>Use the ${gameType.toUpperCase().replace(/_/g, ' ')} interface below to place your bets</p>` +
+                         `<p>Use the ${gameType.toUpperCase().replace('_', ' ')} interface below to place your bets</p>` +
                          '</div>';
         return;
     }
     
     // ... rest of your existing grid population code ...
-}
-
-// Force mode update on window load
-window.addEventListener('load', function() {
-    updateAllModeFields(currentMode);
-});
+   }
 </script>
-
    <!-- // Single Ank -->
-
-   <script src="https://code.jquery.com/jquery-3.7.1.min.js"
-        integrity="sha256-3fhDOQ5ZJp+M+K7Ry5R8iW6vzH3zjw6K0gE2WvP0Qj8="
-        crossorigin="anonymous"></script>
-
 <script>
          
         let singleAnkBets = [];
-
-        $(document).ready( function(){
-            alert(1);
-        });
 
         function initializeSingleAnkGame() {
             // Add bet button
@@ -3476,51 +3170,7 @@ window.addEventListener('load', function() {
 
     <!-- // Jodi -->
 <script>
-    // Jodi Mode Toggle System
-    function initializeJodiModeToggle() {
-        const openToggle = document.getElementById('jodi-open-toggle');
-        const closeToggle = document.getElementById('jodi-close-toggle');
-        
-        if (openToggle && closeToggle) {
-            // Set initial active state
-            openToggle.classList.add('active');
-            closeToggle.classList.remove('active');
-            
-            // Add click events
-            openToggle.addEventListener('click', function() {
-                if (!this.classList.contains('active')) {
-                    openToggle.classList.add('active');
-                    closeToggle.classList.remove('active');
-                    document.getElementById('form-jodi-mode').value = 'open';
-                    console.log('Jodi Mode changed to: open');
-                }
-            });
-            
-            closeToggle.addEventListener('click', function() {
-                if (!this.classList.contains('active')) {
-                    closeToggle.classList.add('active');
-                    openToggle.classList.remove('active');
-                    document.getElementById('form-jodi-mode').value = 'close';
-                    console.log('Jodi Mode changed to: close');
-                }
-            });
-        }
-    }
-
-        // Update the initializeJodiGame function to include mode toggle
-        function initializeJodiGame() {
-            // Add bet button
-            document.getElementById('add-jodi-bet').addEventListener('click', function() {
-                addJodiBet();
-            });
-            
-            // Update jodi total when amount changes
-            document.getElementById('jodi-amount').addEventListener('input', updateJodiTotal);
-            
-            // Initialize mode toggle for Jodi
-            initializeJodiModeToggle();
-    }
-                let jodiBets = [];
+            let jodiBets = [];
 
             function initializeJodiGame() {
                 // Add bet button
@@ -6762,123 +6412,180 @@ window.addEventListener('load', function() {
             const itemsPerPage = 100;
      let totalPages = 1;
 </script>
-<!-- // Abr-Cut Game Logic - Exact 90 pannas -->
 <script>
-        let currentAbrCutAmount = 0;
+// Abr-Cut Game Logic - Exact 90 pannas
+let currentAbrCutAmount = 0;
 
-        // Exact 90 Abr-Cut pannas
-        const CORRECT_ABR_CUT_PANNAS = [
-            '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
-            '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
-            '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
-            '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
-            '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
-            '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
-            // Additional 30 pannas to make it 90
-            '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
-            '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
-            '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
-        ];
+// Exact 90 Abr-Cut pannas
+const CORRECT_ABR_CUT_PANNAS = [
+    '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+    '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+    '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+    '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+    '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+    '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
+    // Additional 30 pannas to make it 90
+    '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
+    '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
+    '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
+];
 
-        // Helper function to convert digit for calculation (0 becomes 10)
-        function getDigitValue(digit) {
-            return digit === '0' ? 10 : parseInt(digit);
-        }
+// Helper function to convert digit for calculation (0 becomes 10)
+function getDigitValue(digit) {
+    return digit === '0' ? 10 : parseInt(digit);
+}
 
-        // Function to initialize Abr-Cut game
-        function initializeAbrCutGame() {
-            // Use the exact 90 Abr-Cut pannas
-            currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
+// Function to initialize Abr-Cut game
+function initializeAbrCutGame() {
+    // Use the exact 90 Abr-Cut pannas
+    currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
+    
+    // Verify we have exactly 90 pannas
+    if (currentAbrCutOutcomes.length !== 90) {
+        console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
+        // If not exactly 90, take first 90
+        currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
+    }
+    
+    // Populate the grid
+    updateAbrCutOutcomes(currentAbrCutOutcomes);
+    
+    // Set up event listeners
+    document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
+    
+    // Set mode toggle for Abr-Cut
+    document.querySelectorAll('.toggle-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+            document.getElementById('form-abr-cut-mode').value = mode;
+        });
+    });
+    
+    // Initial calculation
+    updateAbrCutTotal();
+    
+    console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
+}
+
+// Function to update Abr-Cut outcomes in grid format
+function updateAbrCutOutcomes(outcomes) {
+    const container = document.getElementById('abr-cut-outcomes-container');
+    
+    if (outcomes.length === 0) {
+        container.innerHTML = '<div class="no-digits">No pannas available</div>';
+    } else {
+        let html = `
+            <div class="pana-header">
+                <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
+                <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
+            </div>
+            <div class="pana-list">
+        `;
+        
+        outcomes.forEach((outcome) => {
+            // Calculate sum for display (0 means 10)
+            const digits = outcome.split('').map(d => getDigitValue(d));
+            const sum = digits.reduce((a, b) => a + b, 0);
+            const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
             
-            // Verify we have exactly 90 pannas
-            if (currentAbrCutOutcomes.length !== 90) {
-                console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
-                // If not exactly 90, take first 90
-                currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
-            }
+            html += `
+                <div class="pana-item" data-outcome="${outcome}">
+                    <div class="pana-value-container">
+                        <span class="pana-value">${outcome}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
+}
+
+// Function to update Abr-Cut total
+function updateAbrCutTotal() {
+    const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
+    const activeOutcomeCount = currentAbrCutOutcomes.length;
+    const total = amount * activeOutcomeCount;
+    
+    currentAbrCutAmount = amount;
+    
+    document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
+    document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+    document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+    document.getElementById('form-abr-cut-bet-amount').value = amount;
+    
+    // Update form with all outcomes
+    document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
+    
+    // Enable/disable bet button
+    const betButton = document.getElementById('place-abr-cut-bet-btn');
+    const validationEl = document.getElementById('abr-cut-validation');
+    
+    if (total > 0 && total < 5) {
+        validationEl.textContent = "Minimum total bet is INR 5.00";
+        betButton.disabled = true;
+    } else if (activeOutcomeCount === 0) {
+        validationEl.textContent = "No pannas available for betting";
+        betButton.disabled = true;
+    } else if (amount <= 0) {
+        validationEl.textContent = "Please enter a valid bet amount";
+        betButton.disabled = true;
+    } else {
+        validationEl.textContent = "";
+        betButton.disabled = false;
+    }
+}
+
+// Initialize when Abr-Cut page loads
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelector('.abr-cut-interface').style.display === 'block') {
+        initializeAbrCutGame();
+    }
+});
+</script>
+<!-- ekki bkki -->
+ <script>
+        // Eki Game Logic - 10 separate odd digit panna combinations
+        let currentEkiAmount = 0;
+
+        function initializeEkiGame() {
+            document.getElementById('eki-amount').addEventListener('input', updateEkiTotal);
             
-            // Populate the grid
-            updateAbrCutOutcomes(currentAbrCutOutcomes);
-            
-            // Set up event listeners
-            document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
-            
-            // Set mode toggle for Abr-Cut
             document.querySelectorAll('.toggle-option').forEach(option => {
                 option.addEventListener('click', function() {
                     const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-                    document.getElementById('form-abr-cut-mode').value = mode;
+                    const formModeInput = document.getElementById('form-eki-mode');
+                    if (formModeInput) {
+                        formModeInput.value = mode;
+                    }
                 });
             });
             
-            // Initial calculation
-            updateAbrCutTotal();
-            
-            console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
+            updateEkiTotal();
         }
 
-        // Function to update Abr-Cut outcomes in grid format
-        function updateAbrCutOutcomes(outcomes) {
-            const container = document.getElementById('abr-cut-outcomes-container');
+        function updateEkiTotal() {
+            const amount = parseFloat(document.getElementById('eki-amount').value) || 0;
+            const pannaCount = 10; // 10 total outcomes
+            const total = amount * pannaCount;
             
-            if (outcomes.length === 0) {
-                container.innerHTML = '<div class="no-digits">No pannas available</div>';
-            } else {
-                let html = `
-                    <div class="pana-header">
-                        <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
-                        <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
-                    </div>
-                    <div class="pana-list">
-                `;
-                
-                outcomes.forEach((outcome) => {
-                    // Calculate sum for display (0 means 10)
-                    const digits = outcome.split('').map(d => getDigitValue(d));
-                    const sum = digits.reduce((a, b) => a + b, 0);
-                    const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
-                    
-                    html += `
-                        <div class="pana-item" data-outcome="${outcome}">
-                            <div class="pana-value-container">
-                                <span class="pana-value">${outcome}</span>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                html += '</div>';
-                container.innerHTML = html;
-            }
+            currentEkiAmount = amount;
             
-            document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
-        }
-
-        // Function to update Abr-Cut total
-        function updateAbrCutTotal() {
-            const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
-            const activeOutcomeCount = currentAbrCutOutcomes.length;
-            const total = amount * activeOutcomeCount;
+            updateEkiTableDisplay(amount);
             
-            currentAbrCutAmount = amount;
+            document.getElementById('eki-outcomes-count').textContent = pannaCount;
+            document.getElementById('eki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('eki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-eki-bet-amount').value = amount;
             
-            document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
-            document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-            document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-            document.getElementById('form-abr-cut-bet-amount').value = amount;
-            
-            // Update form with all outcomes
-            document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
-            
-            // Enable/disable bet button
-            const betButton = document.getElementById('place-abr-cut-bet-btn');
-            const validationEl = document.getElementById('abr-cut-validation');
+            const betButton = document.getElementById('place-eki-bet-btn');
+            const validationEl = document.getElementById('eki-validation');
             
             if (total > 0 && total < 5) {
                 validationEl.textContent = "Minimum total bet is INR 5.00";
-                betButton.disabled = true;
-            } else if (activeOutcomeCount === 0) {
-                validationEl.textContent = "No pannas available for betting";
                 betButton.disabled = true;
             } else if (amount <= 0) {
                 validationEl.textContent = "Please enter a valid bet amount";
@@ -6889,148 +6596,91 @@ window.addEventListener('load', function() {
             }
         }
 
-        // Initialize when Abr-Cut page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.querySelector('.abr-cut-interface').style.display === 'block') {
-                initializeAbrCutGame();
+        function updateEkiTableDisplay(amount) {
+            const ekiRows = document.querySelectorAll('.eki-panna-row');
+            
+            ekiRows.forEach(row => {
+                const amountCell = row.querySelector('.eki-amount-display');
+                const panna = row.dataset.panna;
+                
+                if (amount > 0) {
+                    amountCell.textContent = `₹${amount.toFixed(2)}`;
+                    amountCell.classList.add('has-bet');
+                    row.classList.add('active-bet');
+                } else {
+                    amountCell.textContent = '-';
+                    amountCell.classList.remove('has-bet');
+                    row.classList.remove('active-bet');
+                }
+            });
+        }
+
+        // Bkki Game Logic - 10 separate even digit panna combinations
+        let currentBkkiAmount = 0;
+
+        function initializeBkkiGame() {
+            document.getElementById('bkki-amount').addEventListener('input', updateBkkiTotal);
+            
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                    const formModeInput = document.getElementById('form-bkki-mode');
+                    if (formModeInput) {
+                        formModeInput.value = mode;
+                    }
+                });
+            });
+            
+            updateBkkiTotal();
+        }
+
+        function updateBkkiTotal() {
+            const amount = parseFloat(document.getElementById('bkki-amount').value) || 0;
+            const pannaCount = 10; // 10 total outcomes
+            const total = amount * pannaCount;
+            
+            currentBkkiAmount = amount;
+            
+            updateBkkiTableDisplay(amount);
+            
+            document.getElementById('bkki-outcomes-count').textContent = pannaCount;
+            document.getElementById('bkki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('bkki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-bkki-bet-amount').value = amount;
+            
+            const betButton = document.getElementById('place-bkki-bet-btn');
+            const validationEl = document.getElementById('bkki-validation');
+            
+            if (total > 0 && total < 5) {
+                validationEl.textContent = "Minimum total bet is INR 5.00";
+                betButton.disabled = true;
+            } else if (amount <= 0) {
+                validationEl.textContent = "Please enter a valid bet amount";
+                betButton.disabled = true;
+            } else {
+                validationEl.textContent = "";
+                betButton.disabled = false;
             }
-        });
-        </script>
-        <!-- ekki bkki -->
-        <script>
-                // Eki Game Logic - 10 separate odd digit panna combinations
-                let currentEkiAmount = 0;
+        }
 
-                function initializeEkiGame() {
-                    document.getElementById('eki-amount').addEventListener('input', updateEkiTotal);
-                    
-                    document.querySelectorAll('.toggle-option').forEach(option => {
-                        option.addEventListener('click', function() {
-                            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-                            const formModeInput = document.getElementById('form-eki-mode');
-                            if (formModeInput) {
-                                formModeInput.value = mode;
-                            }
-                        });
-                    });
-                    
-                    updateEkiTotal();
+        function updateBkkiTableDisplay(amount) {
+            const bkkiRows = document.querySelectorAll('.bkki-panna-row');
+            
+            bkkiRows.forEach(row => {
+                const amountCell = row.querySelector('.bkki-amount-display');
+                const panna = row.dataset.panna;
+                
+                if (amount > 0) {
+                    amountCell.textContent = `₹${amount.toFixed(2)}`;
+                    amountCell.classList.add('has-bet');
+                    row.classList.add('active-bet');
+                } else {
+                    amountCell.textContent = '-';
+                    amountCell.classList.remove('has-bet');
+                    row.classList.remove('active-bet');
                 }
-
-                function updateEkiTotal() {
-                    const amount = parseFloat(document.getElementById('eki-amount').value) || 0;
-                    const pannaCount = 10; // 10 total outcomes
-                    const total = amount * pannaCount;
-                    
-                    currentEkiAmount = amount;
-                    
-                    updateEkiTableDisplay(amount);
-                    
-                    document.getElementById('eki-outcomes-count').textContent = pannaCount;
-                    document.getElementById('eki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-                    document.getElementById('eki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-                    document.getElementById('form-eki-bet-amount').value = amount;
-                    
-                    const betButton = document.getElementById('place-eki-bet-btn');
-                    const validationEl = document.getElementById('eki-validation');
-                    
-                    if (total > 0 && total < 5) {
-                        validationEl.textContent = "Minimum total bet is INR 5.00";
-                        betButton.disabled = true;
-                    } else if (amount <= 0) {
-                        validationEl.textContent = "Please enter a valid bet amount";
-                        betButton.disabled = true;
-                    } else {
-                        validationEl.textContent = "";
-                        betButton.disabled = false;
-                    }
-                }
-
-                function updateEkiTableDisplay(amount) {
-                    const ekiRows = document.querySelectorAll('.eki-panna-row');
-                    
-                    ekiRows.forEach(row => {
-                        const amountCell = row.querySelector('.eki-amount-display');
-                        const panna = row.dataset.panna;
-                        
-                        if (amount > 0) {
-                            amountCell.textContent = `₹${amount.toFixed(2)}`;
-                            amountCell.classList.add('has-bet');
-                            row.classList.add('active-bet');
-                        } else {
-                            amountCell.textContent = '-';
-                            amountCell.classList.remove('has-bet');
-                            row.classList.remove('active-bet');
-                        }
-                    });
-                }
-
-                // Bkki Game Logic - 10 separate even digit panna combinations
-                let currentBkkiAmount = 0;
-
-                function initializeBkkiGame() {
-                    document.getElementById('bkki-amount').addEventListener('input', updateBkkiTotal);
-                    
-                    document.querySelectorAll('.toggle-option').forEach(option => {
-                        option.addEventListener('click', function() {
-                            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-                            const formModeInput = document.getElementById('form-bkki-mode');
-                            if (formModeInput) {
-                                formModeInput.value = mode;
-                            }
-                        });
-                    });
-                    
-                    updateBkkiTotal();
-                }
-
-                function updateBkkiTotal() {
-                    const amount = parseFloat(document.getElementById('bkki-amount').value) || 0;
-                    const pannaCount = 10; // 10 total outcomes
-                    const total = amount * pannaCount;
-                    
-                    currentBkkiAmount = amount;
-                    
-                    updateBkkiTableDisplay(amount);
-                    
-                    document.getElementById('bkki-outcomes-count').textContent = pannaCount;
-                    document.getElementById('bkki-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-                    document.getElementById('bkki-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-                    document.getElementById('form-bkki-bet-amount').value = amount;
-                    
-                    const betButton = document.getElementById('place-bkki-bet-btn');
-                    const validationEl = document.getElementById('bkki-validation');
-                    
-                    if (total > 0 && total < 5) {
-                        validationEl.textContent = "Minimum total bet is INR 5.00";
-                        betButton.disabled = true;
-                    } else if (amount <= 0) {
-                        validationEl.textContent = "Please enter a valid bet amount";
-                        betButton.disabled = true;
-                    } else {
-                        validationEl.textContent = "";
-                        betButton.disabled = false;
-                    }
-                }
-
-                function updateBkkiTableDisplay(amount) {
-                    const bkkiRows = document.querySelectorAll('.bkki-panna-row');
-                    
-                    bkkiRows.forEach(row => {
-                        const amountCell = row.querySelector('.bkki-amount-display');
-                        const panna = row.dataset.panna;
-                        
-                        if (amount > 0) {
-                            amountCell.textContent = `₹${amount.toFixed(2)}`;
-                            amountCell.classList.add('has-bet');
-                            row.classList.add('active-bet');
-                        } else {
-                            amountCell.textContent = '-';
-                            amountCell.classList.remove('has-bet');
-                            row.classList.remove('active-bet');
-                        }
-                    });
-                }
+            });
+        }
  </script>
 <!-- timer js -->
 <script>
@@ -7282,8 +6932,8 @@ window.addEventListener('load', function() {
     };
 </script>
 
-<!-- close matka js -->
-<script>
+<!-- closed js -->
+<!-- <script>
     // Game Time Management Script
     function manageGameTimeLogic(openTime, closeTime, gameType = 'all') {
         function checkGameTime() {
@@ -7312,14 +6962,14 @@ window.addEventListener('load', function() {
             const isOpenTimeCompleted = openDiff <= 0; // Open time has passed
             const isCloseTimeCompleted = closeDiff <= 0; // Close time has passed
             
-            // console.log('Game Time Check:', {
-            //     gameType: gameType,
-            //     currentTime: istTime.toLocaleTimeString(),
-            //     openTime: openTimeToday.toLocaleTimeString(),
-            //     closeTime: closeTimeToday.toLocaleTimeString(),
-            //     isOpenTimeCompleted,
-            //     isCloseTimeCompleted
-            // });
+            console.log('Game Time Check:', {
+                gameType: gameType,
+                currentTime: istTime.toLocaleTimeString(),
+                openTime: openTimeToday.toLocaleTimeString(),
+                closeTime: closeTimeToday.toLocaleTimeString(),
+                isOpenTimeCompleted,
+                isCloseTimeCompleted
+            });
 
             // Update game states based on close time completion
             if (isCloseTimeCompleted) {
@@ -7639,7 +7289,518 @@ window.addEventListener('load', function() {
     const styleSheet = document.createElement('style');
     styleSheet.textContent = disabledButtonStyles;
     document.head.appendChild(styleSheet);
-</script>
+</script> -->
+<script>
+    // Game Time Management Script - DYNAMIC MODE VERSION
+function manageGameTimeLogic(openTime, closeTime, gameType = 'all') {
+    function checkGameTime() {
+        const now = new Date();
+        
+        // Get current IST time (UTC +5:30)
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        const istTime = new Date(utc + (5.5 * 3600000));
+        
+        // Parse open and close times
+        const [openHours, openMinutes, openSeconds] = openTime.split(':').map(Number);
+        const [closeHours, closeMinutes, closeSeconds] = closeTime.split(':').map(Number);
+        
+        // Create date objects for today's open and close times in IST
+        const openTimeToday = new Date(istTime);
+        openTimeToday.setHours(openHours, openMinutes, openSeconds || 0, 0);
+        
+        const closeTimeToday = new Date(istTime);
+        closeTimeToday.setHours(closeHours, closeMinutes, closeSeconds || 0, 0);
+        
+        // Get time differences in milliseconds
+        const openDiff = openTimeToday - istTime;
+        const closeDiff = closeTimeToday - istTime;
+        
+        // Determine game status
+        const isOpenTimeCompleted = openDiff <= 0; // Open time has passed
+        const isCloseTimeCompleted = closeDiff <= 0; // Close time has passed
 
+        console.log('Game Time Check:', {
+            gameType: gameType,
+            currentTime: istTime.toLocaleTimeString(),
+            openTime: openTimeToday.toLocaleTimeString(),
+            closeTime: closeTimeToday.toLocaleTimeString(),
+            isOpenTimeCompleted,
+            isCloseTimeCompleted
+        });
+
+        // Update game states based on close time completion
+        if (isCloseTimeCompleted) {
+            // Close time completed - disable all games and force close mode
+            updateAllGameStates('closed', true);
+            showMatkaClosedAlert();
+        } else if (isOpenTimeCompleted) {
+            // Open time completed but close time not reached
+            if (gameType === 'jodi') {
+                // For Jodi: Close when open time starts
+                updateJodiGameStates('closed', true);
+            } else {
+                // For other games: Allow betting until close time - BUT DON'T FORCE MODE
+                updateAllGameStates('open', false);
+            }
+        } else {
+            // Both open and close times not reached - all games open - DON'T FORCE MODE
+            updateAllGameStates('open', false);
+        }
+    }
+    
+    function updateAllGameStates(state, forceMode = false) {
+        // Update toggle states for all games
+        updateToggleStates(state, forceMode);
+        
+        // Update place bet buttons for all games
+        updatePlaceBetButtons(state);
+        
+        // Only update mode inputs if forced by time (matka closed)
+        if (forceMode && state === 'closed') {
+            updateAllModeInputs('close');
+        }
+        // Don't update mode inputs otherwise - let user selection persist
+    }
+    
+    function updateJodiGameStates(state, forceMode = false) {
+        // Update toggle states for Jodi
+        updateJodiToggleStates(state, forceMode);
+        
+        // Update place bet buttons for Jodi
+        updateJodiPlaceBetButtons(state);
+        
+        // Only update mode inputs if forced by time
+        if (forceMode && state === 'closed') {
+            updateJodiModeInputs('close');
+        }
+    }
+    
+    function updateJodiToggleStates(state, forceMode = false) {
+        const openToggle = document.getElementById('open-toggle');
+        const closeToggle = document.getElementById('close-toggle');
+        
+        if (!openToggle || !closeToggle) return;
+        
+        if (forceMode && state === 'closed') {
+            // Only force close toggle for Jodi when matka is actually closed
+            openToggle.classList.remove('active');
+            closeToggle.classList.add('active');
+        }
+        // Otherwise, don't change toggle state - keep user selection
+    }
+    
+    function updateToggleStates(state, forceMode = false) {
+        const openToggle = document.getElementById('open-toggle');
+        const closeToggle = document.getElementById('close-toggle');
+        
+        if (!openToggle || !closeToggle) return;
+        
+        if (forceMode && state === 'closed') {
+            // Only force close toggle when matka is actually closed
+            openToggle.classList.remove('active');
+            closeToggle.classList.add('active');
+        }
+        // Otherwise, don't change toggle state - keep user selection
+    }
+    
+    function updateJodiModeInputs(mode) {
+        // Update only Jodi game mode inputs
+        const jodiModeInputs = document.querySelectorAll('#form-jodi-mode, form[id*="jodi"] input[name="mode"]');
+        
+        jodiModeInputs.forEach(input => {
+            if (input.type === 'hidden') {
+                input.value = mode;
+                console.log(`Force updated Jodi mode to: ${mode}`);
+            }
+        });
+    }
+    
+    function updateAllModeInputs(mode) {
+        // Update all mode hidden inputs across different game forms
+        const modeInputs = document.querySelectorAll(`
+            #form-single-ank-mode,
+            #form-jodi-mode,
+            #form-patti-mode,
+            #form-sp-motor-mode,
+            #form-dp-motor-mode,
+            #form-sp-game-mode,
+            #form-dp-game-mode,
+            #form-sp-set-mode,
+            #form-dp-set-mode,
+            #form-tp-set-mode,
+            #form-common-mode,
+            #form-series-mode,
+            #form-rown-mode,
+            #form-abr-cut-mode,
+            #form-eki-mode,
+            #form-bkki-mode,
+            input[name="mode"][type="hidden"]
+        `);
+        
+        modeInputs.forEach(input => {
+            input.value = mode;
+            console.log(`Force updated ${input.id || 'mode input'} to: ${mode}`);
+        });
+    }
+    
+    function updateJodiPlaceBetButtons(state) {
+        // Get all place bet buttons for Jodi games
+        const jodiPlaceBetButtons = document.querySelectorAll('#place-jodi-bet-btn, form[id*="jodi"] .place-bet-btn');
+        
+        jodiPlaceBetButtons.forEach(button => {
+            if (state === 'closed') {
+                // Disable Jodi buttons
+                button.disabled = true;
+                button.style.opacity = '0.6';
+                button.style.cursor = 'not-allowed';
+                
+                // Update button text to indicate closed
+                const originalText = button.getAttribute('data-original-text') || button.textContent;
+                button.setAttribute('data-original-text', originalText);
+                button.innerHTML = 'JODI CLOSED';
+                
+                // Add closed styling
+                button.style.background = '#666';
+                button.style.borderColor = '#666';
+                button.classList.add('jodi-closed');
+            } else {
+                // Enable Jodi buttons
+                button.disabled = false;
+                button.style.opacity = '1';
+                button.style.cursor = 'pointer';
+                
+                // Restore original text if it was changed
+                const originalText = button.getAttribute('data-original-text');
+                if (originalText) {
+                    button.textContent = originalText;
+                    button.removeAttribute('data-original-text');
+                }
+                
+                // Restore original styling
+                button.style.background = '';
+                button.style.borderColor = '';
+                button.classList.remove('jodi-closed');
+            }
+        });
+    }
+    
+    function updatePlaceBetButtons(state) {
+        // Get all place bet buttons (non-Jodi)
+        const placeBetButtons = document.querySelectorAll(`
+            #place-single-ank-bet-btn,
+            #place-patti-bet-btn,
+            #place-sp-motor-bet-btn,
+            #place-dp-motor-bet-btn,
+            #place-sp-game-bet-btn,
+            #place-dp-game-bet-btn,
+            #place-sp-set-bet-btn,
+            #place-dp-set-bet-btn,
+            #place-tp-set-bet-btn,
+            #place-common-bet-btn,
+            #place-series-bet-btn,
+            #place-rown-bet-btn,
+            #place-abr-cut-bet-btn,
+            #place-eki-bet-btn,
+            #place-bkki-bet-btn,
+            .place-bet-btn:not(.jodi-closed)
+        `);
+        
+        placeBetButtons.forEach(button => {
+            if (state === 'closed') {
+                // Disable buttons and show closed state
+                button.disabled = true;
+                button.style.opacity = '0.6';
+                button.style.cursor = 'not-allowed';
+                
+                // Update button text to indicate closed
+                const originalText = button.getAttribute('data-original-text') || button.textContent;
+                button.setAttribute('data-original-text', originalText);
+                button.innerHTML = 'MATKA CLOSED';
+                
+                // Add closed styling
+                button.style.background = '#666';
+                button.style.borderColor = '#666';
+            } else {
+                // Enable buttons
+                button.disabled = false;
+                button.style.opacity = '1';
+                button.style.cursor = 'pointer';
+                
+                // Restore original text if it was changed
+                const originalText = button.getAttribute('data-original-text');
+                if (originalText) {
+                    button.textContent = originalText;
+                    button.removeAttribute('data-original-text');
+                }
+                
+                // Restore original styling
+                button.style.background = '';
+                button.style.borderColor = '';
+            }
+        });
+    }
+    
+    function showMatkaClosedAlert() {
+        // Only show alert once per session to avoid spamming
+        if (!sessionStorage.getItem('matkaClosedAlertShown')) {
+            alert('Matka is closed! Betting is no longer allowed for this session.');
+            sessionStorage.setItem('matkaClosedAlertShown', 'true');
+            
+            // Clear the flag after 5 seconds to allow showing again if needed
+            setTimeout(() => {
+                sessionStorage.removeItem('matkaClosedAlertShown');
+            }, 5000);
+        }
+    }
+    
+    // Initialize and check every second
+    checkGameTime();
+    const timeCheckInterval = setInterval(checkGameTime, 500);
+    
+    // Return function to stop checking if needed
+    return {
+        stop: () => clearInterval(timeCheckInterval),
+        checkNow: checkGameTime
+    };
+}
+
+// Initialize toggle functionality - DYNAMIC MODE VERSION
+function initializeToggleFunctionality() {
+    // Open/Close toggle event listeners
+    document.querySelectorAll('.toggle-option').forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove active class from all options
+            document.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
+            // Add active class to clicked option
+            this.classList.add('active');
+            
+            // Get the mode from the clicked option
+            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+            
+            // Update ALL mode inputs on the page with user selection
+            updateAllModeInputs(mode);
+            
+            console.log('User selected mode:', mode);
+        });
+    });
+    
+    // Set initial mode to 'open' by default only if no mode is selected
+    setTimeout(() => {
+        const openToggle = document.getElementById('open-toggle');
+        const closeToggle = document.getElementById('close-toggle');
+        
+        // Check if any toggle is already active
+        const activeToggle = document.querySelector('.toggle-option.active');
+        
+        if (!activeToggle) {
+            // No active toggle, set open as default
+            if (openToggle) {
+                openToggle.classList.add('active');
+                updateAllModeInputs('open');
+            }
+        } else {
+            // There's already an active toggle, update mode inputs to match
+            const currentMode = activeToggle.id === 'open-toggle' ? 'open' : 'close';
+            updateAllModeInputs(currentMode);
+        }
+    }, 100);
+}
+
+// Enhanced function to update all mode inputs - DYNAMIC VERSION
+function updateAllModeInputs(mode) {
+    const allModeInputs = document.querySelectorAll(`
+        #form-single-ank-mode,
+        #form-jodi-mode, 
+        #form-patti-mode,
+        #form-sp-motor-mode,
+        #form-dp-motor-mode,
+        #form-sp-game-mode,
+        #form-dp-game-mode,
+        #form-sp-set-mode,
+        #form-dp-set-mode,
+        #form-tp-set-mode,
+        #form-common-mode,
+        #form-series-mode,
+        #form-rown-mode,
+        #form-abr-cut-mode,
+        #form-eki-mode,
+        #form-bkki-mode,
+        input[name="mode"][type="hidden"]
+    `);
+    
+    allModeInputs.forEach(input => {
+        input.value = mode;
+        console.log(`Updated ${input.id || 'mode input'} to: ${mode}`);
+    });
+}
+
+// Function to get current mode from UI
+function getCurrentMode() {
+    const openToggle = document.getElementById('open-toggle');
+    const closeToggle = document.getElementById('close-toggle');
+    
+    if (openToggle && openToggle.classList.contains('active')) {
+        return 'open';
+    } else if (closeToggle && closeToggle.classList.contains('active')) {
+        return 'close';
+    }
+    
+    // Default to open if no toggle is active (shouldn't happen with proper initialization)
+    return 'open';
+}
+
+// Enhanced form submission handler to ensure correct mode is sent
+function initializeFormSubmissionHandlers() {
+    // Intercept all bet form submissions to ensure correct mode
+    document.querySelectorAll('form').forEach(form => {
+        if (form.id && form.id.includes('form') && (form.id.includes('single-ank') || form.id.includes('jodi') || form.id.includes('patti') || form.id.includes('motor') || form.id.includes('game') || form.id.includes('set') || form.id.includes('common') || form.id.includes('series') || form.id.includes('rown') || form.id.includes('abr-cut') || form.id.includes('eki') || form.id.includes('bkki'))) {
+            
+            form.addEventListener('submit', function(e) {
+                // Get the current mode from UI
+                const currentMode = getCurrentMode();
+                
+                // Update the mode input in this form
+                const modeInput = this.querySelector('input[name="mode"], input[id*="mode"]');
+                if (modeInput) {
+                    modeInput.value = currentMode;
+                    console.log(`Form ${this.id} submission - Mode set to: ${currentMode}`);
+                }
+                
+                // You can add additional validation here if needed
+                console.log(`Submitting form ${this.id} with mode: ${currentMode}`);
+            });
+        }
+    });
+}
+
+// Get game times from URL parameters or use defaults
+function getGameTimes() {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    return {
+        openTime: urlParams.get('openTime') || '15:30:00',
+        closeTime: urlParams.get('closeTime') || '17:30:00'
+    };
+}
+
+// Detect game type from page content or URL
+function detectGameType() {
+    // Check URL for jodi indicator
+    if (window.location.href.includes('jodi') || window.location.href.includes('jodi')) {
+        return 'jodi';
+    }
+    
+    // Check for jodi elements in DOM
+    if (document.querySelector('[id*="jodi"], [class*="jodi"], .jodi-game')) {
+        return 'jodi';
+    }
+    
+    // Check page title or headings
+    const pageText = document.body.innerText.toLowerCase();
+    if (pageText.includes('jodi') && !pageText.includes('single') && !pageText.includes('patti')) {
+        return 'jodi';
+    }
+    
+    return 'all';
+}
+
+// Initialize when page loads - ENHANCED VERSION
+document.addEventListener('DOMContentLoaded', function() {
+    const gameTimes = getGameTimes();
+    const gameType = detectGameType();
+    
+    // Initialize toggle functionality first
+    initializeToggleFunctionality();
+    
+    // Initialize form submission handlers
+    initializeFormSubmissionHandlers();
+    
+    // Then initialize game time manager
+    window.gameTimeManager = manageGameTimeLogic(gameTimes.openTime, gameTimes.closeTime, gameType);
+    
+    console.log('Dynamic Mode Manager initialized with:', {
+        ...gameTimes,
+        gameType: gameType
+    });
+});
+
+// Utility function to manually check current mode
+window.getCurrentBetMode = function() {
+    return getCurrentMode();
+};
+
+// Utility function to manually set mode
+window.setBetMode = function(mode) {
+    const openToggle = document.getElementById('open-toggle');
+    const closeToggle = document.getElementById('close-toggle');
+    
+    if (mode === 'open' && openToggle) {
+        openToggle.click();
+    } else if (mode === 'close' && closeToggle) {
+        closeToggle.click();
+    }
+};
+
+// Add some CSS for the disabled state
+const disabledButtonStyles = `
+    .place-bet-btn:disabled {
+        background-color: #666 !important;
+        border-color: #666 !important;
+        cursor: not-allowed !important;
+        opacity: 0.6 !important;
+    }
+    
+    .place-bet-btn.matka-closed {
+        background: linear-gradient(135deg, #666, #888) !important;
+        border: 2px solid #666 !important;
+        color: #ccc !important;
+    }
+    
+    .jodi-closed {
+        background: linear-gradient(135deg, #8B0000, #A52A2A) !important;
+        border: 2px solid #8B0000 !important;
+        color: #fff !important;
+    }
+    
+    .toggle-option {
+        cursor: pointer;
+        padding: 8px 16px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin: 0 5px;
+        transition: all 0.3s ease;
+        background-color: #f8f9fa;
+        color: #333;
+    }
+    
+    .toggle-option.active {
+        background-color: #4CAF50;
+        color: white;
+        border-color: #4CAF50;
+        font-weight: bold;
+    }
+    
+    .toggle-option:not(.active):hover {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+    }
+    
+    .toggle-option.active.open-active {
+        background-color: #4CAF50;
+    }
+    
+    .toggle-option.active.close-active {
+        background-color: #f44336;
+    }
+`;
+
+// Inject styles
+if (!document.querySelector('#dynamic-mode-styles')) {
+    const styleSheet = document.createElement('style');
+    styleSheet.id = 'dynamic-mode-styles';
+    styleSheet.textContent = disabledButtonStyles;
+    document.head.appendChild(styleSheet);
+}
+</script>
 </body>
 </html>

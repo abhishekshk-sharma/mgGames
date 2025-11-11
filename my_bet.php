@@ -51,12 +51,17 @@ $game_type_map = [
     'full_sangam' => 'Full Sangam',
     'sp_motor' => 'SP Motor',
     'dp_motor' => 'DP Motor',
-    'red_bracket' => 'Red Bracket',
-    'digital_jodi' => 'Digital Jodi',
-    'choice_pana' => 'Choice Pana',
-    'group_jodi' => 'Group Jodi',
-    'abr_100' => 'ABR 100',
-    'abr_cut' => 'ABR Cut'
+    'sp_game' => 'SP Game',
+    'dp_game' => 'DP Game',
+    'sp_set' => 'SP Set',
+    'dp_set' => 'DP Set',
+    'tp_set' => 'TP Set',
+    'common' => 'Common',
+    'series' => 'Series',
+    'rown' => 'Rown',
+    'eki' => 'Eki',
+    'bkki' => 'Bkki',
+    'abr_cut' => 'Abr Cut'
 ];
 
 // Pagination configuration
@@ -216,7 +221,7 @@ function buildPaginationUrl($page) {
     return '?' . http_build_query($params);
 }
 
-// Function to format numbers based on game type
+// Function to format numbers based on game type - UPDATED FOR SIMPLIFIED FORMAT
 function formatNumbers($game_type, $numbers_played, $result_value = null) {
     $formatted_html = '';
     
@@ -245,9 +250,9 @@ function formatNumbers($game_type, $numbers_played, $result_value = null) {
                 $formatted_html .= formatMotor($decoded_data, $result_value, $game_type);
                 break;
                 
-            case 'sp':
-            case 'dp':
-                $formatted_html .= formatSPDP($decoded_data, $result_value, $game_type);
+            case 'sp_game':
+            case 'dp_game':
+                $formatted_html .= formatSPDPGame($decoded_data, $result_value, $game_type);
                 break;
                 
             case 'sp_set':
@@ -264,9 +269,20 @@ function formatNumbers($game_type, $numbers_played, $result_value = null) {
                 $formatted_html .= formatCommon($decoded_data, $result_value);
                 break;
                 
-            case 'half_sangam':
-            case 'full_sangam':
-                $formatted_html .= formatSangam($decoded_data, $result_value, $game_type);
+            case 'rown':
+                $formatted_html .= formatRown($decoded_data, $result_value);
+                break;
+                
+            case 'eki':
+                $formatted_html .= formatEki($decoded_data, $result_value);
+                break;
+                
+            case 'bkki':
+                $formatted_html .= formatBkki($decoded_data, $result_value);
+                break;
+                
+            case 'abr_cut':
+                $formatted_html .= formatAbrCut($decoded_data, $result_value);
                 break;
                 
             default:
@@ -283,28 +299,11 @@ function formatNumbers($game_type, $numbers_played, $result_value = null) {
     return $formatted_html;
 }
 
-// Helper function for Single Ank - Show all outcomes
+// Helper function for Single Ank - NEW SIMPLIFIED FORMAT: {"5":500}
 function formatSingleAnk($decoded_data, $result_value) {
     $html = '<div class="bet-numbers single-ank-numbers">';
     
-    $outcomes = [];
-    
-    if (isset($decoded_data['single_ank_outcomes'])) {
-        $outcomes = $decoded_data['single_ank_outcomes'];
-    } else {
-        // Handle direct array of outcomes
-        foreach ($decoded_data as $outcome) {
-            if (is_array($outcome)) {
-                $outcomes[] = $outcome;
-            } else {
-                $outcomes[] = ['digit' => $outcome, 'amount' => ''];
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
-        $digit = $outcome['digit'] ?? $outcome['number'] ?? '';
-        $amount = $outcome['amount'] ?? '';
+    foreach ($decoded_data as $digit => $amount) {
         $is_winner = ($result_value && $result_value == $digit) ? 'winner-number' : '';
         $html .= '<span class="bet-number ' . $is_winner . '" title="Amount: ₹' . 
                  number_format($amount, 2) . '">' . $digit . '</span>';
@@ -314,28 +313,11 @@ function formatSingleAnk($decoded_data, $result_value) {
     return $html;
 }
 
-// Helper function for Jodi - Show all outcomes
+// Helper function for Jodi - NEW SIMPLIFIED FORMAT: {"56":500}
 function formatJodi($decoded_data, $result_value) {
     $html = '<div class="bet-numbers jodi-numbers">';
     
-    $outcomes = [];
-    
-    if (isset($decoded_data['jodi_outcomes'])) {
-        $outcomes = $decoded_data['jodi_outcomes'];
-    } else {
-        // Handle direct array of outcomes
-        foreach ($decoded_data as $outcome) {
-            if (is_array($outcome)) {
-                $outcomes[] = $outcome;
-            } else {
-                $outcomes[] = ['jodi' => $outcome, 'amount' => ''];
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
-        $jodi = $outcome['jodi'] ?? ($outcome['digit1'] . $outcome['digit2'] ?? '');
-        $amount = $outcome['amount'] ?? '';
+    foreach ($decoded_data as $jodi => $amount) {
         $is_winner = ($result_value && $result_value == $jodi) ? 'winner-number' : '';
         $html .= '<span class="bet-number ' . $is_winner . '" title="Amount: ₹' . 
                  number_format($amount, 2) . '">' . $jodi . '</span>';
@@ -345,39 +327,15 @@ function formatJodi($decoded_data, $result_value) {
     return $html;
 }
 
-// Helper function for Patti types - Show all outcomes
+// Helper function for Patti types - NEW SIMPLIFIED FORMAT: {"123":500}
 function formatPatti($decoded_data, $result_value, $game_type) {
     $html = '<div class="bet-numbers patti-numbers ' . $game_type . '-numbers">';
     
     $patti_type_class = str_replace('_', '-', $game_type);
-    $outcomes = [];
     
-    if (isset($decoded_data['patti_outcomes'])) {
-        $outcomes = $decoded_data['patti_outcomes'];
-    } else if (isset($decoded_data['selected_digits'])) {
-        // Single patti case
-        $patti = $decoded_data['selected_digits'] ?? '';
-        $amount = $decoded_data['amount_per_outcome'] ?? $decoded_data['total_amount'] ?? '';
-        $outcomes[] = ['patti' => $patti, 'type' => $game_type, 'amount' => $amount];
-    } else {
-        // Handle other formats
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $patti => $amount) {
-                    $outcomes[] = ['patti' => $patti, 'type' => $game_type, 'amount' => $amount];
-                }
-            } else {
-                $outcomes[] = ['patti' => $key, 'type' => $game_type, 'amount' => $value];
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
-        $patti = $outcome['patti'] ?? '';
-        $type = $outcome['type'] ?? $game_type;
-        $amount = $outcome['amount'] ?? '';
+    foreach ($decoded_data as $patti => $amount) {
         $is_winner = ($result_value && $result_value == $patti) ? 'winner-number' : '';
-        $html .= '<span class="bet-number patti ' . $patti_type_class . ' ' . $is_winner . '" title="' . $type . ' - Amount: ₹' . 
+        $html .= '<span class="bet-number patti ' . $patti_type_class . ' ' . $is_winner . '" title="Amount: ₹' . 
                  number_format($amount, 2) . '">' . $patti . '</span>';
     }
     
@@ -385,229 +343,144 @@ function formatPatti($decoded_data, $result_value, $game_type) {
     return $html;
 }
 
-// Helper function for Motor games - Show all outcomes
+// Helper function for Motor games - NEW SIMPLIFIED FORMAT: {"123":500}
 function formatMotor($decoded_data, $result_value, $game_type) {
     $html = '<div class="bet-numbers motor-numbers ' . $game_type . '-numbers">';
     
     $motor_type = str_replace('_motor', '', $game_type);
-    $combinations = [];
     
-    if (isset($decoded_data['pana_combinations'])) {
-        // New format with pana_combinations array
-        $combinations = $decoded_data['pana_combinations'];
-        foreach ($combinations as $pana) {
-            $is_winner = ($result_value && $result_value == $pana) ? 'winner-number' : '';
-            $html .= '<span class="bet-number motor ' . $motor_type . '-motor ' . $is_winner . '">' . $pana . '</span>';
-        }
-    } else {
-        // Old format with key-value pairs
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $digit => $panna) {
-                    $is_winner = ($result_value && $result_value == $digit) ? 'winner-number' : '';
-                    $html .= '<span class="bet-number motor ' . $motor_type . '-motor ' . $is_winner . '">' . 
-                             $digit . ' (' . $panna . ')</span>';
-                }
-            } else {
-                $is_winner = ($result_value && $result_value == $key) ? 'winner-number' : '';
-                $html .= '<span class="bet-number motor ' . $motor_type . '-motor ' . $is_winner . '">' . 
-                         $key . ' (' . $value . ')</span>';
-            }
-        }
+    foreach ($decoded_data as $pana => $amount) {
+        $is_winner = ($result_value && $result_value == $pana) ? 'winner-number' : '';
+        $html .= '<span class="bet-number motor ' . $motor_type . '-motor ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $pana . '</span>';
     }
     
     $html .= '</div>';
     return $html;
 }
 
-// Helper function for SP and DP games - Show all outcomes
-function formatSPDP($decoded_data, $result_value, $game_type) {
+// Helper function for SP and DP games - NEW SIMPLIFIED FORMAT: {"123":500}
+function formatSPDPGame($decoded_data, $result_value, $game_type) {
     $html = '<div class="bet-numbers ' . $game_type . '-numbers">';
     
-    $outcomes = [];
-    $outcomes_field = ($game_type == 'sp') ? 'sp_outcomes' : 'dp_outcomes';
-    
-    if (isset($decoded_data[$outcomes_field])) {
-        $outcomes = $decoded_data[$outcomes_field];
-    } else {
-        // Handle other formats
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $number => $amount) {
-                    $outcomes[] = $number;
-                }
-            } else {
-                $outcomes[] = $key;
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
+    foreach ($decoded_data as $outcome => $amount) {
         $is_winner = ($result_value && $result_value == $outcome) ? 'winner-number' : '';
-        $html .= '<span class="bet-number ' . $is_winner . '">' . $outcome . '</span>';
+        $html .= '<span class="bet-number ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $outcome . '</span>';
     }
     
     $html .= '</div>';
     return $html;
 }
 
-// Helper function for Set games - Show all outcomes
+// Helper function for Set games - NEW SIMPLIFIED FORMAT: {"123":500}
 function formatSet($decoded_data, $result_value, $game_type) {
     $html = '<div class="bet-numbers set-numbers ' . $game_type . '-numbers">';
     
     $set_type = str_replace('_set', '', $game_type);
-    $outcomes = [];
-    $outcomes_field = $game_type . '_outcomes';
     
-    // Get default amount from the data
-    $default_amount = $decoded_data['amount_per_outcome'] ?? $decoded_data['total_amount'] ?? 0;
-    
-    if (isset($decoded_data[$outcomes_field])) {
-        $outcomes = $decoded_data[$outcomes_field];
-    } else if (isset($decoded_data['set_outcomes'])) {
-        $outcomes = $decoded_data['set_outcomes'];
-    } else {
-        // Handle other formats
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $number_set => $amount) {
-                    $outcomes[] = ['numbers' => $number_set, 'amount' => $amount];
-                }
-            } else {
-                $outcomes[] = ['numbers' => $key, 'amount' => $value];
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
-        if (is_array($outcome)) {
-            $numbers = $outcome['numbers'] ?? '';
-            $amount = isset($outcome['amount']) ? (float)$outcome['amount'] : $default_amount;
-        } else {
-            $numbers = $outcome;
-            $amount = $default_amount;
-        }
-        
-        $is_winner = ($result_value && in_array($result_value, (array)$numbers)) ? 'winner-number' : '';
-        $display_numbers = is_array($numbers) ? implode(', ', $numbers) : $numbers;
-        
-        // Only show amount tooltip if amount is valid
-        $title = ($amount > 0) ? 'Amount: ₹' . number_format($amount, 2) : '';
-        $html .= '<span class="bet-number set ' . $set_type . '-set ' . $is_winner . '" title="' . $title . '">' . $display_numbers . '</span>';
+    foreach ($decoded_data as $numbers => $amount) {
+        $is_winner = ($result_value && $result_value == $numbers) ? 'winner-number' : '';
+        $html .= '<span class="bet-number set ' . $set_type . '-set ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $numbers . '</span>';
     }
     
     $html .= '</div>';
     return $html;
 }
 
-// Helper function for Series - Show all outcomes
+// Helper function for Series - NEW SIMPLIFIED FORMAT: {"123":500}
 function formatSeries($decoded_data, $result_value) {
     $html = '<div class="bet-numbers series-numbers">';
     
-    $outcomes = [];
-    
-    if (isset($decoded_data['series_outcomes'])) {
-        $outcomes = $decoded_data['series_outcomes'];
-    } else {
-        // Handle other formats
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $series => $amount) {
-                    $outcomes[] = $series;
-                }
-            } else {
-                $outcomes[] = $key;
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
-        $is_winner = ($result_value && $result_value == $outcome) ? 'winner-number' : '';
-        $html .= '<span class="bet-number series ' . $is_winner . '">' . $outcome . '</span>';
+    foreach ($decoded_data as $series => $amount) {
+        $is_winner = ($result_value && $result_value == $series) ? 'winner-number' : '';
+        $html .= '<span class="bet-number series ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $series . '</span>';
     }
     
     $html .= '</div>';
     return $html;
 }
 
-// Helper function for Common - Show all outcomes
+// Helper function for Common - NEW SIMPLIFIED FORMAT: {"123":500}
 function formatCommon($decoded_data, $result_value) {
     $html = '<div class="bet-numbers common-numbers">';
     
-    $outcomes = [];
-    
-    if (isset($decoded_data['common_outcomes'])) {
-        $outcomes = $decoded_data['common_outcomes'];
-    } else {
-        // Handle other formats
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $common => $amount) {
-                    $outcomes[] = $common;
-                }
-            } else {
-                $outcomes[] = $key;
-            }
-        }
-    }
-    
-    foreach ($outcomes as $outcome) {
-        $is_winner = ($result_value && $result_value == $outcome) ? 'winner-number' : '';
-        $html .= '<span class="bet-number common ' . $is_winner . '">' . $outcome . '</span>';
+    foreach ($decoded_data as $common => $amount) {
+        $is_winner = ($result_value && $result_value == $common) ? 'winner-number' : '';
+        $html .= '<span class="bet-number common ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $common . '</span>';
     }
     
     $html .= '</div>';
     return $html;
 }
 
-// Helper function for Sangam games - Show all outcomes
-function formatSangam($decoded_data, $result_value, $game_type) {
-    $html = '<div class="bet-numbers sangam-numbers ' . $game_type . '-numbers">';
+// Helper function for Rown - NEW SIMPLIFIED FORMAT: {"123":500}
+function formatRown($decoded_data, $result_value) {
+    $html = '<div class="bet-numbers rown-numbers">';
     
-    if (isset($decoded_data['panna']) && isset($decoded_data['digit'])) {
-        // Single sangam bet
-        $panna = $decoded_data['panna'];
-        $digit = $decoded_data['digit'];
-        $amount = $decoded_data['amount'] ?? '';
-        
-        $is_winner = ($result_value && ($result_value == $panna || $result_value == $digit)) ? 'winner-number' : '';
-        $html .= '<span class="bet-number sangam ' . $is_winner . '" title="Amount: ₹' . 
-                 number_format($amount, 2) . '">Panna: ' . $panna . ' | Digit: ' . $digit . '</span>';
-    } else {
-        // Multiple sangam bets
-        foreach ($decoded_data as $key => $value) {
-            if (is_array($value)) {
-                foreach ($value as $sangam => $amount) {
-                    $is_winner = ($result_value && $result_value == $sangam) ? 'winner-number' : '';
-                    $html .= '<span class="bet-number sangam ' . $is_winner . '" title="Amount: ₹' . 
-                             number_format($amount, 2) . '">' . $sangam . '</span>';
-                }
-            } else {
-                $is_winner = ($result_value && $result_value == $key) ? 'winner-number' : '';
-                $html .= '<span class="bet-number sangam ' . $is_winner . '">' . $key . '</span>';
-            }
-        }
+    foreach ($decoded_data as $rown => $amount) {
+        $is_winner = ($result_value && $result_value == $rown) ? 'winner-number' : '';
+        $html .= '<span class="bet-number rown ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $rown . '</span>';
     }
     
     $html .= '</div>';
     return $html;
 }
 
-// Default formatter - Show all outcomes
+// Helper function for Eki - NEW SIMPLIFIED FORMAT: {"137":500}
+function formatEki($decoded_data, $result_value) {
+    $html = '<div class="bet-numbers eki-numbers">';
+    
+    foreach ($decoded_data as $eki => $amount) {
+        $is_winner = ($result_value && $result_value == $eki) ? 'winner-number' : '';
+        $html .= '<span class="bet-number eki ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $eki . '</span>';
+    }
+    
+    $html .= '</div>';
+    return $html;
+}
+
+// Helper function for Bkki - NEW SIMPLIFIED FORMAT: {"280":500}
+function formatBkki($decoded_data, $result_value) {
+    $html = '<div class="bet-numbers bkki-numbers">';
+    
+    foreach ($decoded_data as $bkki => $amount) {
+        $is_winner = ($result_value && $result_value == $bkki) ? 'winner-number' : '';
+        $html .= '<span class="bet-number bkki ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $bkki . '</span>';
+    }
+    
+    $html .= '</div>';
+    return $html;
+}
+
+// Helper function for Abr Cut - NEW SIMPLIFIED FORMAT: {"127":500}
+function formatAbrCut($decoded_data, $result_value) {
+    $html = '<div class="bet-numbers abr-cut-numbers">';
+    
+    foreach ($decoded_data as $abr_cut => $amount) {
+        $is_winner = ($result_value && $result_value == $abr_cut) ? 'winner-number' : '';
+        $html .= '<span class="bet-number abr-cut ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $abr_cut . '</span>';
+    }
+    
+    $html .= '</div>';
+    return $html;
+}
+
+// Default formatter - Show all outcomes for unknown game types
 function formatDefault($decoded_data, $result_value) {
     $html = '<div class="bet-numbers default-numbers">';
     
-    foreach ($decoded_data as $key => $value) {
-        if (is_array($value)) {
-            foreach ($value as $number => $amount) {
-                $is_winner = ($result_value && $result_value == $number) ? 'winner-number' : '';
-                $html .= '<span class="bet-number ' . $is_winner . '" title="Amount: ₹' . 
-                         number_format($amount, 2) . '">' . $number . '</span>';
-            }
-        } else {
-            $is_winner = ($result_value && $result_value == $key) ? 'winner-number' : '';
-            $html .= '<span class="bet-number ' . $is_winner . '">' . $key . '</span>';
-        }
+    foreach ($decoded_data as $number => $amount) {
+        $is_winner = ($result_value && $result_value == $number) ? 'winner-number' : '';
+        $html .= '<span class="bet-number ' . $is_winner . '" title="Amount: ₹' . 
+                 number_format($amount, 2) . '">' . $number . '</span>';
     }
     
     $html .= '</div>';
