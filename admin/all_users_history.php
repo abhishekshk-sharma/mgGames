@@ -35,14 +35,16 @@ if ($date_filter != 'custom') {
             $end_date = date('Y-m-d');
             break;
         case 'yesterday':
-            $start_date = date('Y-m-d', strtotime('-1 day'));
-            $end_date = date('Y-m-d', strtotime('-1 day'));
+            $start_date = date('Y-m-d', strtotime('yesterday'));
+            $end_date = date('Y-m-d', strtotime('yesterday'));
             break;
         case 'this_week':
+            // Get Monday of this week
             $start_date = date('Y-m-d', strtotime('monday this week'));
             $end_date = date('Y-m-d');
             break;
         case 'last_week':
+            // Get Monday of last week to Sunday of last week
             $start_date = date('Y-m-d', strtotime('monday last week'));
             $end_date = date('Y-m-d', strtotime('sunday last week'));
             break;
@@ -51,8 +53,8 @@ if ($date_filter != 'custom') {
             $end_date = date('Y-m-d');
             break;
         case 'last_month':
-            $start_date = date('Y-m-01', strtotime('-1 month'));
-            $end_date = date('Y-m-t', strtotime('-1 month'));
+            $start_date = date('Y-m-01', strtotime('first day of last month'));
+            $end_date = date('Y-m-t', strtotime('last month'));
             break;
     }
 }
@@ -78,7 +80,8 @@ $count_sql = "SELECT COUNT(*) as total
               FROM bets b
               JOIN users u ON b.user_id = u.id
               JOIN games g ON b.game_type_id = g.id
-              WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
+              WHERE b.placed_at >= ? AND b.placed_at < DATE_ADD(?, INTERVAL 1 DAY) 
+              AND u.referral_code = '".$referral_code['referral_code']."'";
 $params = [$start_date, $end_date];
 $types = 'ss';
 
@@ -117,7 +120,8 @@ $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.clo
         JOIN users u ON b.user_id = u.id
         JOIN games g ON b.game_type_id = g.id
         LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
-        WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
+        WHERE b.placed_at >= ? AND b.placed_at < DATE_ADD(?, INTERVAL 1 DAY) 
+        AND u.referral_code = '".$referral_code['referral_code']."'";
 
 if ($filter_user) {
     $sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
@@ -180,7 +184,8 @@ $stats_sql = "SELECT
     COUNT(CASE WHEN b.status = 'pending' THEN 1 END) as pending_bets
     FROM bets b
     JOIN users u ON b.user_id = u.id 
-    WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
+    WHERE b.placed_at >= ? AND b.placed_at < DATE_ADD(?, INTERVAL 1 DAY) 
+    AND u.referral_code = '".$referral_code['referral_code']."'";
 
 $stats_params = [$start_date, $end_date];
 $stats_types = 'ss';
