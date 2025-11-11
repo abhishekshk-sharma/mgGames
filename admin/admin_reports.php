@@ -1709,7 +1709,7 @@ for ($i = -6; $i <= 0; $i++) {
                     <i class="fas fa-calendar-alt"></i>
                     <span>Game Sessions History</span>
                 </a>
-                <a href="set_game_results.php" class="menu-item">
+                <a href="edit_result.php" class="menu-item">
                     <i class="fas fa-flag-checkered"></i>
                     <span>Set Game Results</span>
                 </a>
