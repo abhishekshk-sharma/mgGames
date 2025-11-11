@@ -461,7 +461,11 @@ if (!function_exists('sanitize_input')) {
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
     <script>
+
+
         // Password visibility toggle
         document.querySelectorAll('.toggle-password').forEach(button => {
             button.addEventListener('click', function() {
@@ -543,6 +547,14 @@ if (!function_exists('sanitize_input')) {
                 confirmButtonColor: '#ff3c7e'
             });
         }
+
+
+
+        $(document).ready(function(){
+            $("#pan").on("input", function() {
+                this.value = this.value.toUpperCase();
+            });
+        });
     </script>
 </body>
 </html>
