@@ -92,7 +92,7 @@ $total_potential = 0;
 $won_bets = 0;
 $pending_bets = 0;
 
-// Build main query for bets
+// Build main query for bets - MAKE IT IDENTICAL TO STATS QUERY
 $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.close_time,
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
@@ -129,7 +129,7 @@ $params[] = $limit;
 $params[] = $offset;
 $types .= 'ii';
 
-// Execute main query
+// Execute main query with DEBUGGING
 $stmt = $conn->prepare($sql);
 if ($stmt) {
     if ($params) {
@@ -138,15 +138,37 @@ if ($stmt) {
     $stmt->execute();
     $result = $stmt->get_result();
     
+    // DEBUG: Check the actual result
+    $num_rows = $result ? $result->num_rows : 0;
+    echo "<!-- DEBUG: Main query returned $num_rows rows -->";
+    
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             $bets[] = $row;
         }
+        echo "<!-- DEBUG: Added " . count($bets) . " bets to array -->";
+    } else {
+        echo "<!-- DEBUG: No rows found in main query -->";
+        // Let's check what happens if we remove filters
+        $test_sql = "SELECT COUNT(*) as test_count FROM bets b 
+                     JOIN users u ON b.user_id = u.id 
+                     WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+                     AND u.referral_code = ?";
+        $test_stmt = $conn->prepare($test_sql);
+        $test_stmt->bind_param('sss', $start_date, $end_date, $referral_code);
+        $test_stmt->execute();
+        $test_result = $test_stmt->get_result();
+        $test_data = $test_result->fetch_assoc();
+        echo "<!-- DEBUG: Without filters found: " . $test_data['test_count'] . " bets -->";
+        $test_stmt->close();
     }
     $stmt->close();
+} else {
+    echo "<!-- DEBUG: Statement preparation failed -->";
+    echo "<!-- DEBUG: SQL Error: " . $conn->error . " -->";
 }
 
-// Get total count for pagination
+// Get total count for pagination - MAKE IT SIMPLE
 $count_sql = "SELECT COUNT(*) as total 
               FROM bets b
               JOIN users u ON b.user_id = u.id
@@ -185,13 +207,16 @@ if ($stmt_count) {
     if ($result_count) {
         $row = $result_count->fetch_assoc();
         $total_records = $row['total'] ?? 0;
+        echo "<!-- DEBUG: Count query found: $total_records records -->";
     }
     $stmt_count->close();
+} else {
+    echo "<!-- DEBUG: Count statement preparation failed -->";
 }
 
 $total_pages = ceil($total_records / $limit);
 
-// Get stats
+// Get stats - MAKE IT IDENTICAL TO MAIN QUERY
 $stats_sql = "SELECT 
     COUNT(*) as total_bets,
     SUM(b.amount) as total_amount,
@@ -200,6 +225,7 @@ $stats_sql = "SELECT
     COUNT(CASE WHEN b.status = 'pending' THEN 1 END) as pending_bets
     FROM bets b
     JOIN users u ON b.user_id = u.id 
+    JOIN games g ON b.game_type_id = g.id
     WHERE DATE(b.placed_at) BETWEEN ? AND ? 
     AND u.referral_code = ?";
 
@@ -214,7 +240,7 @@ if ($filter_user) {
 }
 
 if ($filter_game) {
-    $stats_sql .= " AND b.game_type_id IN (SELECT id FROM games WHERE name LIKE ?)";
+    $stats_sql .= " AND g.name LIKE ?";
     $stats_params[] = "%$filter_game%";
     $stats_types .= 's';
 }
@@ -239,8 +265,11 @@ if ($stmt_stats) {
         $total_potential = $stats['total_potential'] ?? 0;
         $won_bets = $stats['won_bets'] ?? 0;
         $pending_bets = $stats['pending_bets'] ?? 0;
+        echo "<!-- DEBUG: Stats query found: $total_bets bets -->";
     }
     $stmt_stats->close();
+} else {
+    echo "<!-- DEBUG: Stats statement preparation failed -->";
 }
 
 // Get unique games for filter dropdown
@@ -251,6 +280,30 @@ if ($games_result && $games_result->num_rows > 0) {
     while ($row = $games_result->fetch_assoc()) {
         $games[] = $row['name'];
     }
+}
+
+
+// DIRECT TEST: Let's run the exact same query without pagination to see what we get
+$test_direct_sql = "SELECT b.id, b.placed_at, u.username, u.referral_code 
+                    FROM bets b
+                    JOIN users u ON b.user_id = u.id
+                    WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+                    AND u.referral_code = ?
+                    ORDER BY b.placed_at DESC 
+                    LIMIT 5";
+$test_direct_stmt = $conn->prepare($test_direct_sql);
+$test_direct_stmt->bind_param('sss', $start_date, $end_date, $referral_code);
+$test_direct_stmt->execute();
+$test_direct_result = $test_direct_stmt->get_result();
+$direct_bets = [];
+while ($row = $test_direct_result->fetch_assoc()) {
+    $direct_bets[] = $row;
+}
+$test_direct_stmt->close();
+
+echo "<!-- DEBUG DIRECT QUERY: Found " . count($direct_bets) . " bets -->";
+foreach ($direct_bets as $direct_bet) {
+    echo "<!-- DEBUG: Bet ID: " . $direct_bet['id'] . ", Date: " . $direct_bet['placed_at'] . ", User: " . $direct_bet['username'] . ", Ref: " . $direct_bet['referral_code'] . " -->";
 }
 ?>
 
