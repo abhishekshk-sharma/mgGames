@@ -17,15 +17,7 @@ if (!isset($_SESSION['admin_id'])) {
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
 
-// Set a valid timezone (remove the invalid one)
-// date_default_timezone_set('Asia/Kolkata'); // Uncomment and set your actual timezone if needed
-
-// Date filtering setup
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-7 days'));
-$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
-$date_filter = isset($_GET['date_filter']) ? $_GET['date_filter'] : 'custom';
-
-// FIXED: Get referral_code properly
+// Get referral_code
 $referral_code = '';
 $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
 if ($stmt) {
@@ -39,15 +31,12 @@ if ($stmt) {
     $stmt->close();
 }
 
-// If referral_code is empty, set a default or handle the error
-if (empty($referral_code)) {
-    // You can either redirect or set a default
-    // header("location: error.php?message=Invalid admin configuration");
-    // exit;
-    $referral_code = 'default'; // Temporary fallback
-}
+// Date filtering setup
+$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-7 days'));
+$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
+$date_filter = isset($_GET['date_filter']) ? $_GET['date_filter'] : 'custom';
 
-// Set dates based on quick filters - FIXED VERSION
+// Set dates based on quick filters
 if ($date_filter != 'custom') {
     $today = date('Y-m-d');
     switch ($date_filter) {
@@ -94,51 +83,16 @@ if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
 
-// Build query for bet count - FIXED
-$count_sql = "SELECT COUNT(*) as total 
-              FROM bets b
-              JOIN users u ON b.user_id = u.id
-              JOIN games g ON b.game_type_id = g.id
-              WHERE DATE(b.placed_at) BETWEEN ? AND ? 
-              AND u.referral_code = ?";
-$params = [$start_date, $end_date, $referral_code];
-$types = 'sss';
+// SIMPLIFIED QUERY - Get bets data
+$bets = [];
+$total_records = 0;
+$total_bets = 0;
+$total_amount = 0;
+$total_potential = 0;
+$won_bets = 0;
+$pending_bets = 0;
 
-if ($filter_user) {
-    $count_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
-    $params[] = "%$filter_user%";
-    $params[] = "%$filter_user%";
-    $types .= 'ss';
-}
-
-if ($filter_game) {
-    $count_sql .= " AND g.name LIKE ?";
-    $params[] = "%$filter_game%";
-    $types .= 's';
-}
-
-if ($filter_status) {
-    $count_sql .= " AND b.status = ?";
-    $params[] = $filter_status;
-    $types .= 's';
-}
-
-$stmt_count = $conn->prepare($count_sql);
-if ($stmt_count) {
-    if ($params) {
-        $stmt_count->bind_param($types, ...$params);
-    }
-    $stmt_count->execute();
-    $result_count = $stmt_count->get_result();
-    $total_records = $result_count->fetch_assoc()['total'];
-    $total_pages = ceil($total_records / $limit);
-    $stmt_count->close();
-} else {
-    $total_records = 0;
-    $total_pages = 0;
-}
-
-// Build query for bets with pagination - FIXED
+// Build main query for bets
 $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.close_time,
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
@@ -175,7 +129,7 @@ $params[] = $limit;
 $params[] = $offset;
 $types .= 'ii';
 
-$bets = [];
+// Execute main query
 $stmt = $conn->prepare($sql);
 if ($stmt) {
     if ($params) {
@@ -192,7 +146,52 @@ if ($stmt) {
     $stmt->close();
 }
 
-// Get stats for dashboard - FIXED
+// Get total count for pagination
+$count_sql = "SELECT COUNT(*) as total 
+              FROM bets b
+              JOIN users u ON b.user_id = u.id
+              WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+              AND u.referral_code = ?";
+
+$count_params = [$start_date, $end_date, $referral_code];
+$count_types = 'sss';
+
+if ($filter_user) {
+    $count_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
+    $count_params[] = "%$filter_user%";
+    $count_params[] = "%$filter_user%";
+    $count_types .= 'ss';
+}
+
+if ($filter_game) {
+    $count_sql .= " AND b.game_type_id IN (SELECT id FROM games WHERE name LIKE ?)";
+    $count_params[] = "%$filter_game%";
+    $count_types .= 's';
+}
+
+if ($filter_status) {
+    $count_sql .= " AND b.status = ?";
+    $count_params[] = $filter_status;
+    $count_types .= 's';
+}
+
+$stmt_count = $conn->prepare($count_sql);
+if ($stmt_count) {
+    if ($count_params) {
+        $stmt_count->bind_param($count_types, ...$count_params);
+    }
+    $stmt_count->execute();
+    $result_count = $stmt_count->get_result();
+    if ($result_count) {
+        $row = $result_count->fetch_assoc();
+        $total_records = $row['total'] ?? 0;
+    }
+    $stmt_count->close();
+}
+
+$total_pages = ceil($total_records / $limit);
+
+// Get stats
 $stats_sql = "SELECT 
     COUNT(*) as total_bets,
     SUM(b.amount) as total_amount,
@@ -226,12 +225,6 @@ if ($filter_status) {
     $stats_types .= 's';
 }
 
-$total_bets = 0;
-$total_amount = 0;
-$total_potential = 0;
-$won_bets = 0;
-$pending_bets = 0;
-
 $stmt_stats = $conn->prepare($stats_sql);
 if ($stmt_stats) {
     if ($stats_params) {
@@ -241,11 +234,11 @@ if ($stmt_stats) {
     $stats_result = $stmt_stats->get_result();
     if ($stats_result && $stats_result->num_rows > 0) {
         $stats = $stats_result->fetch_assoc();
-        $total_bets = $stats['total_bets'] ? $stats['total_bets'] : 0;
-        $total_amount = $stats['total_amount'] ? $stats['total_amount'] : 0;
-        $total_potential = $stats['total_potential'] ? $stats['total_potential'] : 0;
-        $won_bets = $stats['won_bets'] ? $stats['won_bets'] : 0;
-        $pending_bets = $stats['pending_bets'] ? $stats['pending_bets'] : 0;
+        $total_bets = $stats['total_bets'] ?? 0;
+        $total_amount = $stats['total_amount'] ?? 0;
+        $total_potential = $stats['total_potential'] ?? 0;
+        $won_bets = $stats['won_bets'] ?? 0;
+        $pending_bets = $stats['pending_bets'] ?? 0;
     }
     $stmt_stats->close();
 }
@@ -260,6 +253,7 @@ if ($games_result && $games_result->num_rows > 0) {
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -268,7 +262,8 @@ if ($games_result && $games_result->num_rows > 0) {
     <title>All Users Bet History - RB Games Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
+
+        <style>
         :root {
             --primary: #ff3c7e;
             --secondary: #0fb4c9;
@@ -1367,10 +1362,64 @@ if ($games_result && $games_result->num_rows > 0) {
             to { transform: rotate(360deg); }
         }
     </style>
+    <style>
+        /* Your existing CSS styles here - keep them exactly as they were */
+        :root {
+            --primary: #ff3c7e;
+            --secondary: #0fb4c9;
+            --accent: #00cec9;
+            --dark: #1a1a2e;
+            --darker: #16213e;
+            --success: #00b894;
+            --warning: #fdcb6e;
+            --danger: #d63031;
+            --text-light: #f5f6fa;
+            --text-muted: rgba(255, 255, 255, 0.7);
+            --card-bg: rgba(26, 26, 46, 0.8);
+            --border-color: rgba(255, 60, 126, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ... Keep all your existing CSS styles ... */
+        
+        /* Add this for debug panel */
+        .debug-panel {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 5px solid #c0392b;
+        }
+        
+        .debug-panel h4 {
+            margin-bottom: 10px;
+            color: white;
+        }
+        
+        .debug-info {
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 3px;
+            margin: 5px 0;
+        }
+    </style>
 </head>
 <body>
-
-
     <!-- Mobile Menu Toggle -->
     <button class="menu-toggle" id="menuToggle">
         <i class="fas fa-bars"></i>
@@ -1422,7 +1471,7 @@ if ($games_result && $games_result->num_rows > 0) {
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
                 </a>
@@ -1451,6 +1500,29 @@ if ($games_result && $games_result->num_rows > 0) {
                         <span>Logout</span>
                     </a>
                 </div>
+            </div>
+
+            <!-- DEBUG PANEL -->
+            <div class="debug-panel">
+                <h4><i class="fas fa-bug"></i> Debug Information</h4>
+                <div class="debug-info">
+                    <strong>Current Date:</strong> <?php echo date('Y-m-d'); ?><br>
+                    <strong>Current DateTime:</strong> <?php echo date('Y-m-d H:i:s'); ?><br>
+                    <strong>Filter Applied:</strong> <?php echo $date_filter; ?><br>
+                    <strong>Date Range:</strong> <?php echo $start_date; ?> to <?php echo $end_date; ?><br>
+                    <strong>Bets Found (Stats):</strong> <?php echo $total_bets; ?><br>
+                    <strong>Bets in Array:</strong> <?php echo count($bets); ?><br>
+                    <strong>Total Records:</strong> <?php echo $total_records; ?><br>
+                    <strong>Referral Code:</strong> <?php echo $referral_code; ?>
+                </div>
+                <?php if (!empty($bets)): ?>
+                    <div class="debug-info">
+                        <strong>Sample Bet Data:</strong><br>
+                        ID: <?php echo $bets[0]['id']; ?>, 
+                        User: <?php echo $bets[0]['username']; ?>, 
+                        Date: <?php echo $bets[0]['placed_at']; ?>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <!-- Date Range Display -->
@@ -1570,7 +1642,7 @@ if ($games_result && $games_result->num_rows > 0) {
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-search"></i> Apply Filters
                         </button>
-                        <a href="admin_bet_history.php" class="btn btn-secondary">
+                        <a href="all_users_history.php" class="btn btn-secondary">
                             <i class="fas fa-redo"></i> Reset Filters
                         </a>
                     </div>
@@ -1776,6 +1848,9 @@ if ($games_result && $games_result->num_rows > 0) {
                 <?php else: ?>
                     <div class="text-center p-3">
                         <p>No bets found for the selected criteria.</p>
+                        <?php if ($total_bets > 0): ?>
+                            <p class="text-muted">Debug: Stats show <?php echo $total_bets; ?> bets but none in display array.</p>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
                 
@@ -1825,6 +1900,60 @@ if ($games_result && $games_result->num_rows > 0) {
     </div>
 
     <script>
+        // Mobile menu functionality
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        menuToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('active');
+            sidebarOverlay.classList.toggle('active');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+        });
+
+        // Quick filter functionality
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filter = this.getAttribute('data-filter');
+                document.getElementById('dateFilter').value = filter;
+                
+                // Update active state
+                document.querySelectorAll('.quick-filter-btn').forEach(b => {
+                    b.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // Enable/disable date inputs
+                const startDate = document.querySelector('input[name="start_date"]');
+                const endDate = document.querySelector('input[name="end_date"]');
+                
+                if (filter === 'custom') {
+                    startDate.removeAttribute('readonly');
+                    endDate.removeAttribute('readonly');
+                } else {
+                    startDate.setAttribute('readonly', 'readonly');
+                    endDate.setAttribute('readonly', 'readonly');
+                }
+                
+                // Set page to 1 when changing filters
+                document.querySelector('input[name="page"]').value = 1;
+                
+                // Submit form
+                document.getElementById('filterForm').submit();
+            });
+        });
+
+        // Debug: Log bets data to console
+        console.log('Bets data loaded:', <?php echo json_encode($bets); ?>);
+    </script>
+
+
+
+            <script>
        // Mobile menu functionality
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
@@ -1926,3 +2055,5 @@ if ($games_result && $games_result->num_rows > 0) {
     </script>
 </body>
 </html>
+
+
