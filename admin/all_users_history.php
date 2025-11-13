@@ -73,6 +73,7 @@ if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
 
+<<<<<<< HEAD
 // Build query for bet count
 $count_sql = "SELECT COUNT(*) as total 
               FROM bets b
@@ -111,12 +112,25 @@ $total_records = $result_count->fetch_assoc()['total'];
 $total_pages = ceil($total_records / $limit);
 
 // Build query for bets with pagination
+=======
+// SIMPLIFIED QUERY - Get bets data
+$bets = [];
+$total_records = 0;
+$total_bets = 0;
+$total_amount = 0;
+$total_potential = 0;
+$won_bets = 0;
+$pending_bets = 0;
+
+// Build main query for bets - MAKE IT IDENTICAL TO STATS QUERY
+>>>>>>> 32c9f51180731baeed3d8e6d4de018b709820bfe
 $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.close_time,
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
         JOIN users u ON b.user_id = u.id
         JOIN games g ON b.game_type_id = g.id
         LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
+<<<<<<< HEAD
         WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
 
 if ($filter_user) {
@@ -136,6 +150,13 @@ $sql .= "AND u.referral_code = '".$referral_code['referral_code']."' ORDER BY b.
 $stmt = $conn->prepare($sql);
 $params = [$start_date, $end_date];
 $types = 'ss';
+=======
+        WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+        AND u.referral_code = ?";
+
+$params = [$start_date, $end_date, $referral_code];
+$types = 'sss';
+>>>>>>> 32c9f51180731baeed3d8e6d4de018b709820bfe
 
 if ($filter_user) {
     $params[] = "%$filter_user%";
@@ -1421,6 +1442,32 @@ if ($games_result && $games_result->num_rows > 0) {
                 </div>
             </div>
 
+<<<<<<< HEAD
+=======
+            <!-- DEBUG PANEL -->
+            <div class="debug-panel">
+                <h4><i class="fas fa-bug"></i> Debug Information</h4>
+                <div class="debug-info">
+                    <strong>Current Date:</strong> <?php echo date('Y-m-d'); ?><br>
+                    <strong>Current DateTime:</strong> <?php echo date('Y-m-d H:i:s'); ?><br>
+                    <strong>Filter Applied:</strong> <?php echo $date_filter; ?><br>
+                    <strong>Date Range:</strong> <?php echo $start_date; ?> to <?php echo $end_date; ?><br>
+                    <strong>Bets Found (Stats):</strong> <?php echo $total_bets; ?><br>
+                    <strong>Bets in Array:</strong> <?php echo count($bets); ?><br>
+                    <strong>Total Records:</strong> <?php echo $total_records; ?><br>
+                    <strong>Referral Code:</strong> <?php echo $referral_code; ?>
+                </div>
+                <?php if (!empty($bets)): ?>
+                    <div class="debug-info">
+                        <strong>Sample Bet Data:</strong><br>
+                        ID: <?php echo $bets[0]['id']; ?>, 
+                        User: <?php echo $bets[0]['username']; ?>, 
+                        Date: <?php echo $bets[0]['placed_at']; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+>>>>>>> 32c9f51180731baeed3d8e6d4de018b709820bfe
             <!-- Date Range Display -->
             <div class="date-range">
                 <i class="fas fa-calendar-alt"></i>
