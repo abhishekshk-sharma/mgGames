@@ -1485,6 +1485,9 @@ function mapGameTypeToEnum($game_type) {
         'tp_set' => 'tp_set',
         'common' => 'common',
         'series' => 'series',
+          'rown' => 'rown',
+           'eki' => 'eki',      // ADD THIS
+        'bkki' => 'bkki',
         'abr_cut' => 'abr_cut',
         'rown' => 'rown',
         'eki' => 'eki',      // ADD THIS
@@ -2316,7 +2319,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Series Game Interface -->
-<div class="series-controls">
+<div class="series-controls" style="<?php echo $game_type === 'series' ? 'display: block;' : 'display: none;'; ?>">
     <div class="control-group">
         <label for="series-digit1">Select First Digit (0-9, 0 means 10):</label>
         <select id="series-digit1" onchange="validateSeriesDigits()">
@@ -2342,32 +2345,34 @@ include 'includes/header.php';
         <label for="series-amount">Amount per Pana:</label>
         <input type="number" id="series-amount" min="1" value="1" oninput="updateSeriesTotal()">
     </div>
-</div>
+
         
-        <div id="series-outcomes-container" class="pana-combinations">
-            <div class="no-digits">Please select two different digits to generate Series outcomes</div>
-        </div>
-        
-        <div class="series-summary">
-            <p>Total Outcomes: <span id="series-outcomes-count">0</span></p>
-            <p>Amount per Outcome: <span id="series-amount-per-outcome">INR 0.00</span></p>
-            <p>Total Bet Amount: <span id="series-total-bet-amount">INR 0.00</span></p>
-        </div>
-        
-        <form method="POST" id="series-form">
-            <input type="hidden" name="series_digit1" id="form-series-digit1">
-            <input type="hidden" name="series_digit2" id="form-series-digit2">
-            <input type="hidden" name="series_outcomes" id="form-series-outcomes" value="[]">
-            <input type="hidden" name="series-amount" id="form-series-bet-amount">
-            <input type="hidden" name="series_mode" id="form-series-mode" value="open">
-            <input type="hidden" name="place_series_bet" value="1">
-            
-            <button type="submit" class="action-btn place-bet-btn" id="place-series-bet-btn" disabled>
-                PLACE SERIES BET
-            </button>
-        </form>
+    <div id="series-outcomes-container" class="pana-combinations">
+        <div class="no-digits">Please select two different digits to generate Series outcomes</div>
     </div>
+    
+    <div class="series-summary">
+        <p>Total Outcomes: <span id="series-outcomes-count">0</span></p>
+        <p>Amount per Outcome: <span id="series-amount-per-outcome">INR 0.00</span></p>
+        <p>Total Bet Amount: <span id="series-total-bet-amount">INR 0.00</span></p>
+    </div>
+    
+    <form method="POST" id="series-form">
+        <input type="hidden" name="series_digit1" id="form-series-digit1">
+        <input type="hidden" name="series_digit2" id="form-series-digit2">
+        <input type="hidden" name="series_outcomes" id="form-series-outcomes" value="[]">
+        <input type="hidden" name="series-amount" id="form-series-bet-amount">
+        <input type="hidden" name="series_mode" id="form-series-mode" value="open">
+        <input type="hidden" name="place_series_bet" value="1">
+        
+        <button type="submit" class="action-btn place-bet-btn" id="place-series-bet-btn" disabled>
+            PLACE SERIES BET
+        </button>
+    </form>
+    
 </div>
+
+
 <!-- Rown Game Interface -->
 <div class="rown-interface" style="<?php echo $game_type === 'rown' ? 'display: block;' : 'display: none;'; ?>">
     <div class="rown-container">
