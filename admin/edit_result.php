@@ -112,6 +112,7 @@ function processBetsForSession($conn, $session_id, $open_result, $close_result, 
             case 'triple_patti':
                 $bet_status = checkTriplePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
                 break;
+                //sdfds
                 
             // Add more game types as needed
             default:
