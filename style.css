@@ -1774,7 +1774,7 @@
         }
 
         /* Control Group Adjustments for Header */
-        /* .betting-header .control-group {
+        .betting-header .control-group {
             margin-bottom: 0;
         }
 
@@ -1871,7 +1871,7 @@
                 min-width: 180px;
                 font-size: 0.85rem;
             }
-        } */
+        }
 
 
 /* Single Ank Game Styles */
