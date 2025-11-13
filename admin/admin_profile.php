@@ -27,76 +27,31 @@ $message = '';
 $message_type = ''; // success or error
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['update_field'])) {
-        $field = $_POST['field'];
-        $value = trim($_POST['value']);
+    if (isset($_POST['update_profile'])) {
+        // Update username
+        $new_username = trim($_POST['username']);
         
-        // List of allowed fields that can be updated
-        $allowed_fields = ['username', 'phone', 'email', 'upiId', 'address'];
-        
-        if (!in_array($field, $allowed_fields)) {
-            $message = "Invalid field specified";
+        if (empty($new_username)) {
+            $message = "Username cannot be empty";
             $message_type = 'error';
         } else {
-            // Field-specific validation
-            $valid = true;
+            // Check if username already exists (excluding current admin)
+            $check_stmt = $conn->prepare("SELECT id FROM admins WHERE username = ? AND id != ?");
+            $check_stmt->execute([$new_username, $admin_id]);
             
-            switch($field) {
-                case 'username':
-                    if (empty($value)) {
-                        $message = "Username cannot be empty";
-                        $valid = false;
-                    } else {
-                        // Check if username already exists (excluding current admin)
-                        $check_stmt = $conn->prepare("SELECT id FROM admins WHERE username = ? AND id != ?");
-                        $check_stmt->execute([$value, $admin_id]);
-                        if ($check_stmt->get_result()->num_rows > 0) {
-                            $message = "Username already exists. Please choose a different one.";
-                            $valid = false;
-                        }
-                    }
-                    break;
-                    
-                case 'email':
-                    if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                        $message = "Please enter a valid email address";
-                        $valid = false;
-                    }
-                    break;
-                    
-                case 'phone':
-                    if (!preg_match('/^\d{10}$/', $value)) {
-                        $message = "Please enter a valid 10-digit phone number";
-                        $valid = false;
-                    }
-                    break;
-                    
-                case 'upiId':
-                    if (!preg_match('/^[\w.-]+@[\w]+$/', $value)) {
-                        $message = "Please enter a valid UPI ID";
-                        $valid = false;
-                    }
-                    break;
-            }
-            
-            if ($valid) {
-                // Update the field
-                $update_stmt = $conn->prepare("UPDATE admins SET $field = ? WHERE id = ?");
-                if ($update_stmt->execute([$value, $admin_id])) {
-                    // Update session if username changed
-                    if ($field === 'username') {
-                        $_SESSION['admin_username'] = $value;
-                    }
-                    
-                    // Refresh admin data
-                    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
-                    $stmt->execute([$admin_id]);
-                    $admin_data = $stmt->get_result()->fetch_assoc();
-                    
-                    $message = ucfirst($field) . " updated successfully";
+            if ($check_stmt->get_result()->num_rows > 0) {
+                $message = "Username already exists. Please choose a different one.";
+                $message_type = 'error';
+            } else {
+                // Update username
+                $update_stmt = $conn->prepare("UPDATE admins SET username = ? WHERE id = ?");
+                if ($update_stmt->execute([$new_username, $admin_id])) {
+                    $_SESSION['admin_username'] = $new_username;
+                    $admin_data['username'] = $new_username;
+                    $message = "Username updated successfully";
                     $message_type = 'success';
                 } else {
-                    $message = "Error updating " . $field;
+                    $message = "Error updating username";
                     $message_type = 'error';
                 }
             }
@@ -104,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
     
     if (isset($_POST['update_password'])) {
-        // Update password (existing logic)
+        // Update password
         $current_password = $_POST['current_password'];
         $new_password = $_POST['new_password'];
         $confirm_password = $_POST['confirm_password'];
@@ -148,6 +103,8 @@ $title = "Admin Profile - RB Games";
     <title><?php echo $title; ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     
     <style>
         :root {
@@ -185,7 +142,7 @@ $title = "Admin Profile - RB Games";
             min-height: 100vh;
         }
 
-        /* Sidebar Styles (same as before) */
+        /* Sidebar Styles */
         .sidebar {
             width: 260px;
             background: var(--dark);
@@ -364,16 +321,22 @@ $title = "Admin Profile - RB Games";
 
         .info-group {
             margin-bottom: 1.5rem;
-            position: relative;
         }
 
         .info-label {
             color: var(--text-muted);
             font-size: 0.9rem;
             margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            display: block;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 500;
+            padding: 0.8rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
         }
 
         #referral-code{
@@ -402,41 +365,6 @@ $title = "Admin Profile - RB Games";
             color: transparent;
             cursor:pointer; 
             font-size: 20px;
-        }
-
-        .edit-icon {
-            color: var(--primary);
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s ease;
-            opacity: 0.7;
-        }
-
-        .edit-icon:hover {
-            opacity: 1;
-            transform: scale(1.1);
-        }
-
-        .info-value {
-            font-size: 1.1rem;
-            font-weight: 500;
-            padding: 0.8rem 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            min-height: 50px;
-            display: flex;
-            align-items: center;
-        }
-
-        .uneditable-field {
-            background: rgba(255, 255, 255, 0.02);
-            color: var(--text-muted);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .uneditable-field .edit-icon {
-            display: none;
         }
 
         .form-group {
@@ -494,15 +422,6 @@ $title = "Admin Profile - RB Games";
             justify-content: center;
         }
 
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
         .alert {
             padding: 1rem;
             border-radius: 6px;
@@ -520,120 +439,6 @@ $title = "Admin Profile - RB Games";
             background: rgba(214, 48, 49, 0.2);
             border-color: rgba(214, 48, 49, 0.3);
             color: var(--danger);
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 10000;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(5px);
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 2rem;
-            width: 90%;
-            max-width: 500px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            transform: translateY(-20px);
-            opacity: 0;
-            transition: all 0.3s ease;
-        }
-
-        .modal.active .modal-content {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .modal-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-        }
-
-        .modal-close:hover {
-            color: var(--text-light);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .modal-body {
-            margin-bottom: 1.5rem;
-        }
-
-        .modal-footer {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-        }
-
-        /* Password Modal Specific */
-        .password-strength {
-            height: 4px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
-            margin-top: 0.5rem;
-            overflow: hidden;
-        }
-
-        .password-strength-fill {
-            height: 100%;
-            transition: all 0.3s ease;
-            border-radius: 2px;
-        }
-
-        .strength-weak {
-            background: var(--danger);
-            width: 33%;
-        }
-
-        .strength-medium {
-            background: var(--warning);
-            width: 66%;
-        }
-
-        .strength-strong {
-            background: var(--success);
-            width: 100%;
         }
 
         /* Mobile menu toggle */
@@ -737,11 +542,6 @@ $title = "Admin Profile - RB Games";
             .main-content {
                 padding: 1rem;
             }
-            
-            .modal-content {
-                padding: 1.5rem;
-                margin: 1rem;
-            }
         }
 
         @media (max-width: 576px) {
@@ -774,10 +574,6 @@ $title = "Admin Profile - RB Games";
             
             .profile-section {
                 padding: 1rem;
-            }
-            
-            .modal-footer {
-                flex-direction: column;
             }
         }
     </style>
@@ -880,56 +676,39 @@ $title = "Admin Profile - RB Games";
                     </div>
                     
                     <div class="profile-grid">
-                        <!-- Editable Fields -->
                         <div class="info-group">
-                            <span class="info-label">
-                                Username
-                                <i class="fas fa-edit edit-icon" data-field="username" data-value="<?php echo htmlspecialchars($admin_data['username']); ?>"></i>
-                            </span>
+                            <span class="info-label">Username</span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['username']); ?></div>
                         </div>
                         
                         <div class="info-group">
-                            <span class="info-label">
-                                Phone
-                                <i class="fas fa-edit edit-icon" data-field="phone" data-value="<?php echo htmlspecialchars($admin_data['phone']); ?>"></i>
-                            </span>
+                            <span class="info-label">Phone</span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['phone']); ?></div>
                         </div>
                         
                         <div class="info-group">
-                            <span class="info-label">
-                                Email
-                                <i class="fas fa-edit edit-icon" data-field="email" data-value="<?php echo htmlspecialchars($admin_data['email']); ?>"></i>
-                            </span>
+                            <span class="info-label">Email</span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['email']); ?></div>
                         </div>
                         
                         <div class="info-group">
-                            <span class="info-label">
-                                UPI ID
-                                <i class="fas fa-edit edit-icon" data-field="upiId" data-value="<?php echo htmlspecialchars($admin_data['upiId']); ?>"></i>
-                            </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['upiId']); ?></div>
-                        </div>
-                        
-                        <div class="info-group">
-                            <span class="info-label">
-                                Address
-                                <i class="fas fa-edit edit-icon" data-field="address" data-value="<?php echo htmlspecialchars($admin_data['address']); ?>"></i>
-                            </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['address']); ?></div>
-                        </div>
-                        
-                        <!-- Non-editable Fields -->
-                        <div class="info-group">
                             <span class="info-label">Aadhar Number</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['adhar']); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars($admin_data['adhar']); ?></div>
                         </div>
                         
                         <div class="info-group">
                             <span class="info-label">PAN Number</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['pan']); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars($admin_data['pan']); ?></div>
+                        </div>
+                        
+                        <div class="info-group">
+                            <span class="info-label">UPI ID</span>
+                            <div class="info-value"><?php echo htmlspecialchars($admin_data['upiId']); ?></div>
+                        </div>
+                        
+                        <div class="info-group">
+                            <span class="info-label">Address</span>
+                            <div class="info-value"><?php echo htmlspecialchars($admin_data['address']); ?></div>
                         </div>
                         
                         <div class="info-group">
@@ -944,103 +723,74 @@ $title = "Admin Profile - RB Games";
                         
                         <div class="info-group">
                             <span class="info-label">Partner Status</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['is_partner']); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars($admin_data['is_partner']); ?></div>
                         </div>
                         
                         <div class="info-group">
                             <span class="info-label">Account Status</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars(ucfirst($admin_data['status'])); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars(ucfirst($admin_data['status'])); ?></div>
                         </div>
                         
                         <div class="info-group">
                             <span class="info-label">Member Since</span>
-                            <div class="info-value uneditable-field"><?php echo date('F j, Y, g:i A', strtotime($admin_data['created_at'])); ?></div>
+                            <div class="info-value"><?php echo date('F j, Y, g:i A', strtotime($admin_data['created_at'])); ?></div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Update Username Section -->
+                <div class="profile-section">
+                    <div class="section-header">
+                        <h2 class="section-title"><i class="fas fa-edit"></i> Update Username</h2>
+                    </div>
+                    
+                    <form method="POST" action="">
+                        <div class="form-group">
+                            <label class="form-label" for="username">New Username</label>
+                            <input type="text" id="username" name="username" class="form-input" 
+                                   value="<?php echo htmlspecialchars($admin_data['username']); ?>" required>
+                        </div>
+                        
+                        <button type="submit" name="update_profile" class="btn btn-block">
+                            <i class="fas fa-save"></i> Update Username
+                        </button>
+                    </form>
                 </div>
 
                 <!-- Change Password Section -->
                 <div class="profile-section">
                     <div class="section-header">
-                        <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
+                        <h2 class="section-title"><i class="fas fa-lock"></i> Change Password</h2>
                     </div>
                     
-                    <button type="button" class="btn" id="changePasswordBtn">
-                        <i class="fas fa-key"></i> Change Password
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Field Modal -->
-    <div class="modal" id="editFieldModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">
-                    <i class="fas fa-edit"></i>
-                    <span id="modalFieldTitle">Edit Field</span>
-                </h3>
-                <button class="modal-close" id="closeFieldModal">&times;</button>
-            </div>
-            <form method="POST" action="" id="fieldForm">
-                <div class="modal-body">
-                    <input type="hidden" name="field" id="modalFieldName">
-                    <div class="form-group">
-                        <label class="form-label" id="modalFieldLabel">Field Value</label>
-                        <input type="text" name="value" id="modalFieldValue" class="form-input" required>
-                        <div class="field-hint" id="fieldHint" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" id="cancelFieldEdit">Cancel</button>
-                    <button type="submit" name="update_field" class="btn">Update</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Change Password Modal -->
-    <div class="modal" id="changePasswordModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">
-                    <i class="fas fa-key"></i>
-                    Change Password
-                </h3>
-                <button class="modal-close" id="closePasswordModal">&times;</button>
-            </div>
-            <form method="POST" action="" id="passwordForm">
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label class="form-label" for="current_password">Current Password</label>
-                        <input type="password" id="current_password" name="current_password" class="form-input" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label" for="new_password">New Password</label>
-                        <input type="password" id="new_password" name="new_password" class="form-input" required>
-                        <div class="password-strength">
-                            <div class="password-strength-fill" id="passwordStrength"></div>
+                    <form method="POST" action="">
+                        <div class="form-group">
+                            <label class="form-label" for="current_password">Current Password</label>
+                            <input type="password" id="current_password" name="current_password" class="form-input" required>
                         </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label" for="confirm_password">Confirm New Password</label>
-                        <input type="password" id="confirm_password" name="confirm_password" class="form-input" required>
-                        <div id="passwordMatch" style="font-size: 0.8rem; margin-top: 0.5rem;"></div>
-                    </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="new_password">New Password</label>
+                            <input type="password" id="new_password" name="new_password" class="form-input" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="confirm_password">Confirm New Password</label>
+                            <input type="password" id="confirm_password" name="confirm_password" class="form-input" required>
+                        </div>
+                        
+                        <button type="submit" name="update_password" class="btn btn-block">
+                            <i class="fas fa-key"></i> Change Password
+                        </button>
+                    </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" id="cancelPasswordChange">Cancel</button>
-                    <button type="submit" name="update_password" class="btn">Change Password</button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
 
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
     <script>
         // Mobile menu functionality
         const menuToggle = document.getElementById('menuToggle');
@@ -1083,148 +833,6 @@ $title = "Admin Profile - RB Games";
 
         handleResize();
         window.addEventListener('resize', handleResize);
-
-        // Modal functionality
-        const editFieldModal = document.getElementById('editFieldModal');
-        const changePasswordModal = document.getElementById('changePasswordModal');
-        const fieldForm = document.getElementById('fieldForm');
-        
-        // Field editing functionality
-        document.querySelectorAll('.edit-icon').forEach(icon => {
-            icon.addEventListener('click', function() {
-                const field = this.dataset.field;
-                const value = this.dataset.value;
-                
-                // Set modal content based on field
-                document.getElementById('modalFieldTitle').textContent = `Edit ${getFieldDisplayName(field)}`;
-                document.getElementById('modalFieldLabel').textContent = getFieldDisplayName(field);
-                document.getElementById('modalFieldName').value = field;
-                document.getElementById('modalFieldValue').value = value;
-                
-                // Set input type and hints
-                const input = document.getElementById('modalFieldValue');
-                const hint = document.getElementById('fieldHint');
-                
-                switch(field) {
-                    case 'email':
-                        input.type = 'email';
-                        hint.textContent = 'Enter a valid email address';
-                        break;
-                    case 'phone':
-                        input.type = 'tel';
-                        input.pattern = '[0-9]{10}';
-                        hint.textContent = 'Enter a 10-digit phone number';
-                        break;
-                    case 'upiId':
-                        input.type = 'text';
-                        hint.textContent = 'Enter a valid UPI ID (e.g., username@upi)';
-                        break;
-                    default:
-                        input.type = 'text';
-                        hint.textContent = '';
-                }
-                
-                // Show modal
-                editFieldModal.classList.add('active');
-            });
-        });
-
-        // Password modal
-        document.getElementById('changePasswordBtn').addEventListener('click', function() {
-            changePasswordModal.classList.add('active');
-        });
-
-        // Close modals
-        document.getElementById('closeFieldModal').addEventListener('click', function() {
-            editFieldModal.classList.remove('active');
-        });
-
-        document.getElementById('closePasswordModal').addEventListener('click', function() {
-            changePasswordModal.classList.remove('active');
-        });
-
-        document.getElementById('cancelFieldEdit').addEventListener('click', function() {
-            editFieldModal.classList.remove('active');
-        });
-
-        document.getElementById('cancelPasswordChange').addEventListener('click', function() {
-            changePasswordModal.classList.remove('active');
-        });
-
-        // Close modals when clicking outside
-        editFieldModal.addEventListener('click', function(e) {
-            if (e.target === editFieldModal) {
-                editFieldModal.classList.remove('active');
-            }
-        });
-
-        changePasswordModal.addEventListener('click', function(e) {
-            if (e.target === changePasswordModal) {
-                changePasswordModal.classList.remove('active');
-            }
-        });
-
-        // Password strength indicator
-        document.getElementById('new_password').addEventListener('input', function() {
-            const password = this.value;
-            const strengthBar = document.getElementById('passwordStrength');
-            
-            let strength = 0;
-            if (password.length >= 6) strength++;
-            if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
-            if (password.match(/\d/)) strength++;
-            if (password.match(/[^a-zA-Z\d]/)) strength++;
-            
-            strengthBar.className = 'password-strength-fill';
-            if (password.length === 0) {
-                strengthBar.style.width = '0';
-            } else if (strength <= 1) {
-                strengthBar.classList.add('strength-weak');
-            } else if (strength <= 3) {
-                strengthBar.classList.add('strength-medium');
-            } else {
-                strengthBar.classList.add('strength-strong');
-            }
-        });
-
-        // Password match indicator
-        document.getElementById('confirm_password').addEventListener('input', function() {
-            const newPassword = document.getElementById('new_password').value;
-            const confirmPassword = this.value;
-            const matchIndicator = document.getElementById('passwordMatch');
-            
-            if (confirmPassword.length === 0) {
-                matchIndicator.textContent = '';
-                matchIndicator.style.color = '';
-            } else if (newPassword === confirmPassword) {
-                matchIndicator.textContent = '✓ Passwords match';
-                matchIndicator.style.color = 'var(--success)';
-            } else {
-                matchIndicator.textContent = '✗ Passwords do not match';
-                matchIndicator.style.color = 'var(--danger)';
-            }
-        });
-
-        // Helper function to get display names for fields
-        function getFieldDisplayName(field) {
-            const names = {
-                'username': 'Username',
-                'phone': 'Phone Number',
-                'email': 'Email Address',
-                'upiId': 'UPI ID',
-                'address': 'Address'
-            };
-            return names[field] || field;
-        }
-
-        // Prevent accidental form submission on Enter key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-                if (!e.target.closest('.modal')) {
-                    e.preventDefault();
-                }
-            }
-        });
 
 
         $(document).ready(function(){

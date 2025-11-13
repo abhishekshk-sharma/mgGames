@@ -97,8 +97,8 @@ $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.clo
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
         JOIN users u ON b.user_id = u.id
+        JOIN games g ON b.game_type_id = g.id
         LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
-        JOIN games g ON gs.game_id = g.id
         WHERE DATE(b.placed_at) BETWEEN ? AND ? 
         AND u.referral_code = ?";
 
@@ -1556,27 +1556,27 @@ foreach ($direct_bets as $direct_bet) {
             </div>
 
             <!-- DEBUG PANEL -->
-            <!-- <div class="debug-panel">
+            <div class="debug-panel">
                 <h4><i class="fas fa-bug"></i> Debug Information</h4>
                 <div class="debug-info">
-                    <strong>Current Date:</strong> <?php //echo date('Y-m-d'); ?><br>
-                    <strong>Current DateTime:</strong> <?php //echo date('Y-m-d H:i:s'); ?><br>
-                    <strong>Filter Applied:</strong> <?php //echo $date_filter; ?><br>
-                    <strong>Date Range:</strong> <?php //echo $start_date; ?> to <?php //echo $end_date; ?><br>
-                    <strong>Bets Found (Stats):</strong> <?php //echo $total_bets; ?><br>
-                    <strong>Bets in Array:</strong> <?php //echo count($bets); ?><br>
-                    <strong>Total Records:</strong> <?php //echo $total_records; ?><br>
-                    <strong>Referral Code:</strong> <?php// echo $referral_code; ?>
+                    <strong>Current Date:</strong> <?php echo date('Y-m-d'); ?><br>
+                    <strong>Current DateTime:</strong> <?php echo date('Y-m-d H:i:s'); ?><br>
+                    <strong>Filter Applied:</strong> <?php echo $date_filter; ?><br>
+                    <strong>Date Range:</strong> <?php echo $start_date; ?> to <?php echo $end_date; ?><br>
+                    <strong>Bets Found (Stats):</strong> <?php echo $total_bets; ?><br>
+                    <strong>Bets in Array:</strong> <?php echo count($bets); ?><br>
+                    <strong>Total Records:</strong> <?php echo $total_records; ?><br>
+                    <strong>Referral Code:</strong> <?php echo $referral_code; ?>
                 </div>
-                <?php //if (!empty($bets)): ?>
+                <?php if (!empty($bets)): ?>
                     <div class="debug-info">
                         <strong>Sample Bet Data:</strong><br>
-                        ID: <?php //echo $bets[0]['id']; ?>, 
-                        User: <?php //echo $bets[0]['username']; ?>, 
-                        Date: <?php //echo $bets[0]['placed_at']; ?>
+                        ID: <?php echo $bets[0]['id']; ?>, 
+                        User: <?php echo $bets[0]['username']; ?>, 
+                        Date: <?php echo $bets[0]['placed_at']; ?>
                     </div>
-                <?php //endif; ?>
-            </div> -->
+                <?php endif; ?>
+            </div>
 
             <!-- Date Range Display -->
             <div class="date-range">
