@@ -1487,7 +1487,9 @@ function mapGameTypeToEnum($game_type) {
         'series' => 'series',
           'rown' => 'rown',
            'eki' => 'eki',      // ADD THIS
-        'bkki' => 'bkki' 
+        'bkki' => 'bkki',
+        'abr_cut' => 'abr_cut'
+
     ];
     
     return isset($mapping[$game_type]) ? $mapping[$game_type] : 'single_ank';
