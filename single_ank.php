@@ -1485,11 +1485,6 @@ function mapGameTypeToEnum($game_type) {
         'tp_set' => 'tp_set',
         'common' => 'common',
         'series' => 'series',
-          'rown' => 'rown',
-           'eki' => 'eki',      // ADD THIS
-        'bkki' => 'bkki',
-        'abr_cut' => 'abr_cut'
-
         'abr_cut' => 'abr_cut',
         'rown' => 'rown',
         'eki' => 'eki',      // ADD THIS
