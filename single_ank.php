@@ -2345,8 +2345,6 @@ include 'includes/header.php';
         <label for="series-amount">Amount per Pana:</label>
         <input type="number" id="series-amount" min="1" value="1" oninput="updateSeriesTotal()">
     </div>
-
-        
     <div id="series-outcomes-container" class="pana-combinations">
         <div class="no-digits">Please select two different digits to generate Series outcomes</div>
     </div>
@@ -2369,8 +2367,11 @@ include 'includes/header.php';
             PLACE SERIES BET
         </button>
     </form>
-    
 </div>
+
+        
+    
+
 
 
 <!-- Rown Game Interface -->
@@ -8012,3 +8013,6 @@ if (!document.querySelector('#dynamic-mode-styles')) {
 </script>
 </body>
 </html>
+
+
+

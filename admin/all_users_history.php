@@ -97,8 +97,8 @@ $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.clo
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
         JOIN users u ON b.user_id = u.id
-        JOIN games g ON b.game_type_id = g.id
         LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
+        JOIN games g ON gs.game_id = g.id
         WHERE DATE(b.placed_at) BETWEEN ? AND ? 
         AND u.referral_code = ?";
 
