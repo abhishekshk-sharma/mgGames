@@ -376,6 +376,34 @@ $title = "Admin Profile - RB Games";
             gap: 0.5rem;
         }
 
+        #referral-code{
+            /* background-color: red; */
+            /* background: linear-gradient(to right, red, blue); */
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            color: transparent;
+            -webkit-background-clip: text;
+            font-weight: 600;
+        }
+
+        #referral-span{
+            display:inline;
+            background: linear-gradient(to right, red, blue);
+            -webkit-background-clip: text;
+            color: transparent;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .fa-copy{
+            
+            background-color: var(--dark); 
+            background: linear-gradient(to right, pink, skyblue);
+            -webkit-background-clip: text;
+            color: transparent;
+            cursor:pointer; 
+            font-size: 20px;
+        }
+
         .edit-icon {
             color: var(--primary);
             cursor: pointer;
@@ -905,8 +933,13 @@ $title = "Admin Profile - RB Games";
                         </div>
                         
                         <div class="info-group">
-                            <span class="info-label">Referral Code</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['referral_code']); ?></div>
+                            <span class="info-label " id="referral-span">Referral Code &nbsp; </span>
+                            <i class="fa-solid fa-copy" id="copyBtn"></i>
+                            <div class="info-value"> 
+                                <span id="referral-code">
+                                    <?php echo htmlspecialchars($admin_data['referral_code']); ?>
+                                </span> 
+                            </div>
                         </div>
                         
                         <div class="info-group">
@@ -1005,6 +1038,8 @@ $title = "Admin Profile - RB Games";
             </form>
         </div>
     </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
     <script>
         // Mobile menu functionality
@@ -1189,6 +1224,20 @@ $title = "Admin Profile - RB Games";
                     e.preventDefault();
                 }
             }
+        });
+
+        $(document).ready(function(){
+            $("#copyBtn").click(function() {
+                const text = $("#referral-code").text().trim();
+
+                // Use Clipboard API (modern, mobile-friendly)
+                navigator.clipboard.writeText(text).then(function() {
+                    alert("Copied to clipboard!");
+                }).catch(function(err) {
+                    console.error("Failed to copy: ", err);
+                });
+            });
+
         });
     </script>
 </body>
