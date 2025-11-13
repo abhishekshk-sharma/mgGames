@@ -112,58 +112,6 @@ function processBetsForSession($conn, $session_id, $open_result, $close_result, 
             case 'triple_patti':
                 $bet_status = checkTriplePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
                 break;
-            
-            case 'sp_motor':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-
-            case 'dp_motor':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-
-            case 'sp':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-
-            case 'dp':
-                $bet_status = checkDoublePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-
-            case 'sp_set':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-
-            case 'dp_set':
-                $bet_status = checkDoublePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-            
-            case 'tp_set':
-                $bet_status = checkDoublePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-
-            case 'abr_cut':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-            
-            case 'rown':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-            
-            case 'bkki':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-            
-            case 'eki':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-            
-            case 'series':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
-            
-            case 'common':
-                $bet_status = checkSinglePatti($numbers_played, $open_result, $close_result, $bet['bet_mode']);
-                break;
                 
             // Add more game types as needed
             default:
@@ -1679,7 +1627,7 @@ if ($games_result && $games_result->num_rows > 0) {
                     <i class="fas fa-calendar-alt"></i>
                     <span>Game Sessions History</span>
                 </a>
-                <a href="#" class="menu-item active">
+                <a href="set_game_results.php" class="menu-item active">
                     <i class="fas fa-flag-checkered"></i>
                     <span>Set Game Results</span>
                 </a>
