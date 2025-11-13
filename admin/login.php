@@ -240,7 +240,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
         
         <div class="auth-footer">
-            <p>User Login? <a href="../login.php">User Login</a></p>
+            <p>Not Registered? <a href="signup.php">Sign Up</a></p>
         </div>
     </div>
 </body>
