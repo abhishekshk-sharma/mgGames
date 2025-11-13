@@ -17,22 +17,32 @@ if (!isset($_SESSION['admin_id'])) {
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
 
+// Get referral_code
+$referral_code = '';
+$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+if ($stmt) {
+    $stmt->bind_param("i", $admin_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $referral_code = $row['referral_code'];
+    }
+    $stmt->close();
+}
+
 // Date filtering setup
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-7 days'));
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 $date_filter = isset($_GET['date_filter']) ? $_GET['date_filter'] : 'custom';
 
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_code  = $stmt->get_result();
-$referral_code = $referral_code->fetch_assoc();
-
 // Set dates based on quick filters
 if ($date_filter != 'custom') {
+    $today = date('Y-m-d');
     switch ($date_filter) {
         case 'today':
-            $start_date = date('Y-m-d');
-            $end_date = date('Y-m-d');
+            $start_date = $today;
+            $end_date = $today;
             break;
         case 'yesterday':
             $start_date = date('Y-m-d', strtotime('-1 day'));
@@ -40,7 +50,7 @@ if ($date_filter != 'custom') {
             break;
         case 'this_week':
             $start_date = date('Y-m-d', strtotime('monday this week'));
-            $end_date = date('Y-m-d');
+            $end_date = $today;
             break;
         case 'last_week':
             $start_date = date('Y-m-d', strtotime('monday last week'));
@@ -48,11 +58,11 @@ if ($date_filter != 'custom') {
             break;
         case 'this_month':
             $start_date = date('Y-m-01');
-            $end_date = date('Y-m-d');
+            $end_date = $today;
             break;
         case 'last_month':
-            $start_date = date('Y-m-01', strtotime('-1 month'));
-            $end_date = date('Y-m-t', strtotime('-1 month'));
+            $start_date = date('Y-m-01', strtotime('first day of last month'));
+            $end_date = date('Y-m-t', strtotime('last month'));
             break;
     }
 }
@@ -73,105 +83,140 @@ if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
 
-// Build query for bet count
-$count_sql = "SELECT COUNT(*) as total 
-              FROM bets b
-              JOIN users u ON b.user_id = u.id
-              JOIN games g ON b.game_type_id = g.id
-              WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
-$params = [$start_date, $end_date];
-$types = 'ss';
+// SIMPLIFIED QUERY - Get bets data
+$bets = [];
+$total_records = 0;
+$total_bets = 0;
+$total_amount = 0;
+$total_potential = 0;
+$won_bets = 0;
+$pending_bets = 0;
 
-if ($filter_user) {
-    $count_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
-    $params[] = "%$filter_user%";
-    $params[] = "%$filter_user%";
-    $types .= 'ss';
-}
-
-if ($filter_game) {
-    $count_sql .= " AND g.name LIKE ?";
-    $params[] = "%$filter_game%";
-    $types .= 's';
-}
-
-if ($filter_status) {
-    $count_sql .= " AND b.status = ?";
-    $params[] = $filter_status;
-    $types .= 's';
-}
-
-$stmt_count = $conn->prepare($count_sql." AND u.referral_code = '".$referral_code['referral_code']."'");
-if ($params) {
-    $stmt_count->bind_param($types, ...$params);
-}
-$stmt_count->execute();
-$result_count = $stmt_count->get_result();
-$total_records = $result_count->fetch_assoc()['total'];
-$total_pages = ceil($total_records / $limit);
-
-// Build query for bets with pagination
+// Build main query for bets - MAKE IT IDENTICAL TO STATS QUERY
 $sql = "SELECT b.*, u.username, u.email, g.name as game_name, g.open_time, g.close_time,
                gs.session_date, gs.open_result, gs.close_result, gs.jodi_result
         FROM bets b
         JOIN users u ON b.user_id = u.id
         JOIN games g ON b.game_type_id = g.id
         LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
-        WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
+        WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+        AND u.referral_code = ?";
+
+$params = [$start_date, $end_date, $referral_code];
+$types = 'sss';
 
 if ($filter_user) {
     $sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
-}
-
-if ($filter_game) {
-    $sql .= " AND g.name LIKE ?";
-}
-
-if ($filter_status) {
-    $sql .= " AND b.status = ?";
-}
-
-$sql .= "AND u.referral_code = '".$referral_code['referral_code']."' ORDER BY b.placed_at DESC LIMIT ? OFFSET ?";
-
-$stmt = $conn->prepare($sql);
-$params = [$start_date, $end_date];
-$types = 'ss';
-
-if ($filter_user) {
     $params[] = "%$filter_user%";
     $params[] = "%$filter_user%";
     $types .= 'ss';
 }
 
 if ($filter_game) {
+    $sql .= " AND g.name LIKE ?";
     $params[] = "%$filter_game%";
     $types .= 's';
 }
 
 if ($filter_status) {
+    $sql .= " AND b.status = ?";
     $params[] = $filter_status;
     $types .= 's';
 }
 
+$sql .= " ORDER BY b.placed_at DESC LIMIT ? OFFSET ?";
 $params[] = $limit;
 $params[] = $offset;
 $types .= 'ii';
 
-if ($params) {
-    $stmt->bind_param($types, ...$params);
-}
-
-$stmt->execute();
-$result = $stmt->get_result();
-$bets = [];
-
-if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $bets[] = $row;
+// Execute main query with DEBUGGING
+$stmt = $conn->prepare($sql);
+if ($stmt) {
+    if ($params) {
+        $stmt->bind_param($types, ...$params);
     }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    // DEBUG: Check the actual result
+    $num_rows = $result ? $result->num_rows : 0;
+    echo "<!-- DEBUG: Main query returned $num_rows rows -->";
+    
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $bets[] = $row;
+        }
+        echo "<!-- DEBUG: Added " . count($bets) . " bets to array -->";
+    } else {
+        echo "<!-- DEBUG: No rows found in main query -->";
+        // Let's check what happens if we remove filters
+        $test_sql = "SELECT COUNT(*) as test_count FROM bets b 
+                     JOIN users u ON b.user_id = u.id 
+                     WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+                     AND u.referral_code = ?";
+        $test_stmt = $conn->prepare($test_sql);
+        $test_stmt->bind_param('sss', $start_date, $end_date, $referral_code);
+        $test_stmt->execute();
+        $test_result = $test_stmt->get_result();
+        $test_data = $test_result->fetch_assoc();
+        echo "<!-- DEBUG: Without filters found: " . $test_data['test_count'] . " bets -->";
+        $test_stmt->close();
+    }
+    $stmt->close();
+} else {
+    echo "<!-- DEBUG: Statement preparation failed -->";
+    echo "<!-- DEBUG: SQL Error: " . $conn->error . " -->";
 }
 
-// Get stats for dashboard
+// Get total count for pagination - MAKE IT SIMPLE
+$count_sql = "SELECT COUNT(*) as total 
+              FROM bets b
+              JOIN users u ON b.user_id = u.id
+              WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+              AND u.referral_code = ?";
+
+$count_params = [$start_date, $end_date, $referral_code];
+$count_types = 'sss';
+
+if ($filter_user) {
+    $count_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
+    $count_params[] = "%$filter_user%";
+    $count_params[] = "%$filter_user%";
+    $count_types .= 'ss';
+}
+
+if ($filter_game) {
+    $count_sql .= " AND b.game_type_id IN (SELECT id FROM games WHERE name LIKE ?)";
+    $count_params[] = "%$filter_game%";
+    $count_types .= 's';
+}
+
+if ($filter_status) {
+    $count_sql .= " AND b.status = ?";
+    $count_params[] = $filter_status;
+    $count_types .= 's';
+}
+
+$stmt_count = $conn->prepare($count_sql);
+if ($stmt_count) {
+    if ($count_params) {
+        $stmt_count->bind_param($count_types, ...$count_params);
+    }
+    $stmt_count->execute();
+    $result_count = $stmt_count->get_result();
+    if ($result_count) {
+        $row = $result_count->fetch_assoc();
+        $total_records = $row['total'] ?? 0;
+        echo "<!-- DEBUG: Count query found: $total_records records -->";
+    }
+    $stmt_count->close();
+} else {
+    echo "<!-- DEBUG: Count statement preparation failed -->";
+}
+
+$total_pages = ceil($total_records / $limit);
+
+// Get stats - MAKE IT IDENTICAL TO MAIN QUERY
 $stats_sql = "SELECT 
     COUNT(*) as total_bets,
     SUM(b.amount) as total_amount,
@@ -180,20 +225,22 @@ $stats_sql = "SELECT
     COUNT(CASE WHEN b.status = 'pending' THEN 1 END) as pending_bets
     FROM bets b
     JOIN users u ON b.user_id = u.id 
-    WHERE DATE(b.placed_at) BETWEEN ? AND ? AND u.referral_code = '".$referral_code['referral_code']."'";
+    JOIN games g ON b.game_type_id = g.id
+    WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+    AND u.referral_code = ?";
 
-$stats_params = [$start_date, $end_date];
-$stats_types = 'ss';
+$stats_params = [$start_date, $end_date, $referral_code];
+$stats_types = 'sss';
 
 if ($filter_user) {
-    $stats_sql .= " AND b.user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)";
+    $stats_sql .= " AND (u.username LIKE ? OR u.email LIKE ?)";
     $stats_params[] = "%$filter_user%";
     $stats_params[] = "%$filter_user%";
     $stats_types .= 'ss';
 }
 
 if ($filter_game) {
-    $stats_sql .= " AND b.game_id IN (SELECT id FROM games WHERE name LIKE ?)";
+    $stats_sql .= " AND g.name LIKE ?";
     $stats_params[] = "%$filter_game%";
     $stats_types .= 's';
 }
@@ -205,18 +252,25 @@ if ($filter_status) {
 }
 
 $stmt_stats = $conn->prepare($stats_sql);
-if ($stats_params) {
-    $stmt_stats->bind_param($stats_types, ...$stats_params);
+if ($stmt_stats) {
+    if ($stats_params) {
+        $stmt_stats->bind_param($stats_types, ...$stats_params);
+    }
+    $stmt_stats->execute();
+    $stats_result = $stmt_stats->get_result();
+    if ($stats_result && $stats_result->num_rows > 0) {
+        $stats = $stats_result->fetch_assoc();
+        $total_bets = $stats['total_bets'] ?? 0;
+        $total_amount = $stats['total_amount'] ?? 0;
+        $total_potential = $stats['total_potential'] ?? 0;
+        $won_bets = $stats['won_bets'] ?? 0;
+        $pending_bets = $stats['pending_bets'] ?? 0;
+        echo "<!-- DEBUG: Stats query found: $total_bets bets -->";
+    }
+    $stmt_stats->close();
+} else {
+    echo "<!-- DEBUG: Stats statement preparation failed -->";
 }
-$stmt_stats->execute();
-$stats_result = $stmt_stats->get_result();
-$stats = $stats_result->fetch_assoc();
-
-$total_bets = $stats['total_bets'] ? $stats['total_bets'] : 0;
-$total_amount = $stats['total_amount'] ? $stats['total_amount'] : 0;
-$total_potential = $stats['total_potential'] ? $stats['total_potential'] : 0;
-$won_bets = $stats['won_bets'] ? $stats['won_bets'] : 0;
-$pending_bets = $stats['pending_bets'] ? $stats['pending_bets'] : 0;
 
 // Get unique games for filter dropdown
 $games_sql = "SELECT DISTINCT name FROM games ORDER BY name";
@@ -227,7 +281,32 @@ if ($games_result && $games_result->num_rows > 0) {
         $games[] = $row['name'];
     }
 }
+
+
+// DIRECT TEST: Let's run the exact same query without pagination to see what we get
+$test_direct_sql = "SELECT b.id, b.placed_at, u.username, u.referral_code 
+                    FROM bets b
+                    JOIN users u ON b.user_id = u.id
+                    WHERE DATE(b.placed_at) BETWEEN ? AND ? 
+                    AND u.referral_code = ?
+                    ORDER BY b.placed_at DESC 
+                    LIMIT 5";
+$test_direct_stmt = $conn->prepare($test_direct_sql);
+$test_direct_stmt->bind_param('sss', $start_date, $end_date, $referral_code);
+$test_direct_stmt->execute();
+$test_direct_result = $test_direct_stmt->get_result();
+$direct_bets = [];
+while ($row = $test_direct_result->fetch_assoc()) {
+    $direct_bets[] = $row;
+}
+$test_direct_stmt->close();
+
+echo "<!-- DEBUG DIRECT QUERY: Found " . count($direct_bets) . " bets -->";
+foreach ($direct_bets as $direct_bet) {
+    echo "<!-- DEBUG: Bet ID: " . $direct_bet['id'] . ", Date: " . $direct_bet['placed_at'] . ", User: " . $direct_bet['username'] . ", Ref: " . $direct_bet['referral_code'] . " -->";
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -236,7 +315,8 @@ if ($games_result && $games_result->num_rows > 0) {
     <title>All Users Bet History - RB Games Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
+
+        <style>
         :root {
             --primary: #ff3c7e;
             --secondary: #0fb4c9;
@@ -1335,10 +1415,64 @@ if ($games_result && $games_result->num_rows > 0) {
             to { transform: rotate(360deg); }
         }
     </style>
+    <style>
+        /* Your existing CSS styles here - keep them exactly as they were */
+        :root {
+            --primary: #ff3c7e;
+            --secondary: #0fb4c9;
+            --accent: #00cec9;
+            --dark: #1a1a2e;
+            --darker: #16213e;
+            --success: #00b894;
+            --warning: #fdcb6e;
+            --danger: #d63031;
+            --text-light: #f5f6fa;
+            --text-muted: rgba(255, 255, 255, 0.7);
+            --card-bg: rgba(26, 26, 46, 0.8);
+            --border-color: rgba(255, 60, 126, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ... Keep all your existing CSS styles ... */
+        
+        /* Add this for debug panel */
+        .debug-panel {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 5px solid #c0392b;
+        }
+        
+        .debug-panel h4 {
+            margin-bottom: 10px;
+            color: white;
+        }
+        
+        .debug-info {
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 3px;
+            margin: 5px 0;
+        }
+    </style>
 </head>
 <body>
-
-
     <!-- Mobile Menu Toggle -->
     <button class="menu-toggle" id="menuToggle">
         <i class="fas fa-bars"></i>
@@ -1390,7 +1524,7 @@ if ($games_result && $games_result->num_rows > 0) {
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
                 </a>
@@ -1419,6 +1553,29 @@ if ($games_result && $games_result->num_rows > 0) {
                         <span>Logout</span>
                     </a>
                 </div>
+            </div>
+
+            <!-- DEBUG PANEL -->
+            <div class="debug-panel">
+                <h4><i class="fas fa-bug"></i> Debug Information</h4>
+                <div class="debug-info">
+                    <strong>Current Date:</strong> <?php echo date('Y-m-d'); ?><br>
+                    <strong>Current DateTime:</strong> <?php echo date('Y-m-d H:i:s'); ?><br>
+                    <strong>Filter Applied:</strong> <?php echo $date_filter; ?><br>
+                    <strong>Date Range:</strong> <?php echo $start_date; ?> to <?php echo $end_date; ?><br>
+                    <strong>Bets Found (Stats):</strong> <?php echo $total_bets; ?><br>
+                    <strong>Bets in Array:</strong> <?php echo count($bets); ?><br>
+                    <strong>Total Records:</strong> <?php echo $total_records; ?><br>
+                    <strong>Referral Code:</strong> <?php echo $referral_code; ?>
+                </div>
+                <?php if (!empty($bets)): ?>
+                    <div class="debug-info">
+                        <strong>Sample Bet Data:</strong><br>
+                        ID: <?php echo $bets[0]['id']; ?>, 
+                        User: <?php echo $bets[0]['username']; ?>, 
+                        Date: <?php echo $bets[0]['placed_at']; ?>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <!-- Date Range Display -->
@@ -1538,7 +1695,7 @@ if ($games_result && $games_result->num_rows > 0) {
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-search"></i> Apply Filters
                         </button>
-                        <a href="admin_bet_history.php" class="btn btn-secondary">
+                        <a href="all_users_history.php" class="btn btn-secondary">
                             <i class="fas fa-redo"></i> Reset Filters
                         </a>
                     </div>
@@ -1744,6 +1901,9 @@ if ($games_result && $games_result->num_rows > 0) {
                 <?php else: ?>
                     <div class="text-center p-3">
                         <p>No bets found for the selected criteria.</p>
+                        <?php if ($total_bets > 0): ?>
+                            <p class="text-muted">Debug: Stats show <?php echo $total_bets; ?> bets but none in display array.</p>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
                 
@@ -1793,6 +1953,60 @@ if ($games_result && $games_result->num_rows > 0) {
     </div>
 
     <script>
+        // Mobile menu functionality
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        menuToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('active');
+            sidebarOverlay.classList.toggle('active');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+        });
+
+        // Quick filter functionality
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filter = this.getAttribute('data-filter');
+                document.getElementById('dateFilter').value = filter;
+                
+                // Update active state
+                document.querySelectorAll('.quick-filter-btn').forEach(b => {
+                    b.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // Enable/disable date inputs
+                const startDate = document.querySelector('input[name="start_date"]');
+                const endDate = document.querySelector('input[name="end_date"]');
+                
+                if (filter === 'custom') {
+                    startDate.removeAttribute('readonly');
+                    endDate.removeAttribute('readonly');
+                } else {
+                    startDate.setAttribute('readonly', 'readonly');
+                    endDate.setAttribute('readonly', 'readonly');
+                }
+                
+                // Set page to 1 when changing filters
+                document.querySelector('input[name="page"]').value = 1;
+                
+                // Submit form
+                document.getElementById('filterForm').submit();
+            });
+        });
+
+        // Debug: Log bets data to console
+        console.log('Bets data loaded:', <?php echo json_encode($bets); ?>);
+    </script>
+
+
+
+            <script>
        // Mobile menu functionality
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
@@ -1835,7 +2049,7 @@ if ($games_result && $games_result->num_rows > 0) {
         handleResize();
         window.addEventListener('resize', handleResize);
         
-        // Quick filter functionality
+        // Quick filter functionality - FIXED VERSION
         document.querySelectorAll('.quick-filter-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const filter = this.getAttribute('data-filter');
@@ -1859,6 +2073,9 @@ if ($games_result && $games_result->num_rows > 0) {
                     endDate.setAttribute('readonly', 'readonly');
                 }
                 
+                // Set page to 1 when changing filters
+                document.querySelector('input[name="page"]').value = 1;
+                
                 // Submit form
                 document.getElementById('filterForm').submit();
             });
@@ -1879,6 +2096,17 @@ if ($games_result && $games_result->num_rows > 0) {
         
         // Update every minute
         setInterval(updateTime, 60000);
+
+
+        document.getElementById('filterForm').addEventListener('submit', function(e) {
+            console.log('Submitting filter:', {
+                date_filter: document.getElementById('dateFilter').value,
+                start_date: document.querySelector('input[name="start_date"]').value,
+                end_date: document.querySelector('input[name="end_date"]').value
+            });
+        });
     </script>
 </body>
 </html>
+
+

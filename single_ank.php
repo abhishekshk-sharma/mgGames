@@ -469,7 +469,105 @@ $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
 header("Location: " . $redirect_url);
 exit();
 }
-
+// SERIES GAME - Store as {"123":500}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_series_bet'])) {
+        // DEBUG: Check what's actually being posted
+    error_log("=== SERIES GAME DEBUG ===");
+    error_log("POST Data: " . print_r($_POST, true));
+    error_log("digit1: " . ($_POST['series_digit1'] ?? 'NOT SET'));
+    error_log("digit2: " . ($_POST['series_digit2'] ?? 'NOT SET'));
+    error_log("amount: " . ($_POST['series-amount'] ?? 'NOT SET'));
+    error_log("outcomes: " . ($_POST['series_outcomes'] ?? 'NOT SET'));
+    error_log("mode: " . ($_POST['series_mode'] ?? 'NOT SET'));
+    $raw_bet_amount = isset($_POST['series-amount']) ? trim($_POST['series-amount']) : ''; // FIXED: was 'series_bet_amount'
+    $digit1 = isset($_POST['series_digit1']) ? $_POST['series_digit1'] : '';
+    $digit2 = isset($_POST['series_digit2']) ? $_POST['series_digit2'] : '';
+    $outcomes_json = isset($_POST['series_outcomes']) ? $_POST['series_outcomes'] : '[]';
+    $bet_mode = isset($_POST['series_mode']) ? $_POST['series_mode'] : 'open';
+    
+    $active_outcomes = json_decode($outcomes_json, true);
+    
+    if (empty($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a bet amount";
+    } elseif (!is_numeric($raw_bet_amount)) {
+        $_SESSION['error_message'] = "Please enter a valid numeric amount";
+    } elseif ((float)$raw_bet_amount <= 0) {
+        $_SESSION['error_message'] = "Bet amount must be greater than zero";
+    } elseif (empty($digit1) || empty($digit2)) {
+        $_SESSION['error_message'] = "Please select both digits";
+    } elseif (empty($active_outcomes)) {
+        $_SESSION['error_message'] = "Please generate outcomes by selecting digits";
+    } else {
+        $bet_amount = (float)$raw_bet_amount;
+        $total_bet_amount = $bet_amount * count($active_outcomes);
+        
+        if ($total_bet_amount < 5) {
+            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
+        }
+        elseif ($balance >= $total_bet_amount) {
+            if (deductFromWallet($user_id, $total_bet_amount, 'Series Bet placed')) {
+                $successful_bets = 0;
+                $failed_bets = 0;
+                
+                foreach ($active_outcomes as $outcome) {
+                    // SIMPLIFIED FORMAT: {"123":500}
+                    $individual_bet_data = [
+                        $outcome => $bet_amount
+                    ];
+                    
+                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'series');
+                    
+                    if ($bet_id) {
+                        $successful_bets++;
+                    } else {
+                        $failed_bets++;
+                    }
+                }
+                
+                if ($successful_bets > 0) {
+                    $digit_display1 = $digit1 === '0' ? '0 (10)' : $digit1;
+                    $digit_display2 = $digit2 === '0' ? '0 (10)' : $digit2;
+                    
+                    if ($digit1 === $digit2) {
+                        $digit_info = "Digit $digit_display1 (both same)";
+                    } else {
+                        $digit_info = "Digits $digit_display1 and $digit_display2";
+                    }
+                    
+                    $_SESSION['success_message'] = "Series bet placed successfully! " . 
+                        $successful_bets . " individual panna bets recorded for " . $digit_info . ". INR " . 
+                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
+                    
+                    if ($failed_bets > 0) {
+                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
+                        $failed_amount = $bet_amount * $failed_bets;
+                        if ($failed_amount > 0) {
+                            refundBetAmount($user_id, $failed_amount, "Refund for failed Series bets");
+                        }
+                    }
+                    
+                    $user = getUserData($user_id);
+                    $balance = $user['balance'];
+                } else {
+                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    refundBetAmount($user_id, $total_bet_amount, "All Series bet recordings failed");
+                }
+            } else {
+                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+            }
+        } else {
+            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
+                number_format($total_bet_amount, 2) . " but only have INR " . 
+                number_format($balance, 2) . " in your account.";
+        }
+    }
+    
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
+}
 // SP/DP GAME - Store as {"123":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['place_sp_game_bet']) || isset($_POST['place_dp_game_bet']))) {
     $is_sp_game = isset($_POST['place_sp_game_bet']);
@@ -979,7 +1077,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_abr_cut_bet']))
     $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
     
     $active_outcomes = json_decode($abr_cut_outcomes_json, true);
-    $correct_abr_cut_pannas = [/* your 90 abr-cut pannas */];
+    
+    // Define the exact 90 ABR-CUT pannas
+    $correct_abr_cut_pannas = [
+        '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+        '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+        '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+        '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+        '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+        '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
+        // Additional 30 pannas to make it 90
+        '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
+        '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
+        '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
+    ];
     
     if (empty($raw_bet_amount)) {
         $_SESSION['error_message'] = "Please enter a bet amount";
@@ -1011,8 +1122,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_abr_cut_bet']))
                     
                     if ($bet_id) {
                         $successful_bets++;
+                        error_log("Abr-Cut bet recorded - Panna: $outcome, Amount: $bet_amount, Bet ID: $bet_id");
                     } else {
                         $failed_bets++;
+                        error_log("Failed to record abr-cut bet for panna: " . $outcome . " with amount: " . $bet_amount);
                     }
                 }
                 
@@ -1031,90 +1144,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_abr_cut_bet']))
                     
                     $user = getUserData($user_id);
                     $balance = $user['balance'];
+                    $user_balance = $balance;
                 } else {
                     $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
+                    error_log("All abr-cut bet recordings failed for user $user_id");
                     refundBetAmount($user_id, $total_bet_amount, "All abr-cut bet recordings failed");
                 }
             } else {
                 $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
+                error_log("Wallet deduction failed for abr-cut bet - user $user_id");
             }
         } else {
-            $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
-                number_format($total_bet_amount, 2) . " but only have INR " . 
-                number_format($balance, 2) . " in your account.";
-        }
-    }
-    
- // BKKI GAME - Store as {"280":500} with correct panna numbers
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
-    $raw_bet_amount = isset($_POST['bet_amount']) ? trim($_POST['bet_amount']) : '';
-    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
-    
-    // CORRECTED BKKI PANNAS - Use the actual panna numbers from your table
-    $bkki_pannas = ['280', '460', '246', '268', '468', '480', '680', '248', '240', '260'];
-    
-    if (empty($raw_bet_amount)) {
-        $_SESSION['error_message'] = "Please enter a bet amount";
-    } elseif (!is_numeric($raw_bet_amount)) {
-        $_SESSION['error_message'] = "Please enter a valid numeric amount";
-    } elseif ((float)$raw_bet_amount <= 0) {
-        $_SESSION['error_message'] = "Bet amount must be greater than zero";
-    } else {
-        $bet_amount = (float)$raw_bet_amount;
-        $total_bet_amount = $bet_amount * count($bkki_pannas);
-        
-        if ($total_bet_amount < 5) {
-            $_SESSION['error_message'] = "Minimum total bet is 5 RPS. Your total bet is only INR " . number_format($total_bet_amount, 2);
-        }
-        elseif ($balance >= $total_bet_amount) {
-            if (deductFromWallet($user_id, $total_bet_amount, 'Bkki Bet placed')) {
-                $successful_bets = 0;
-                $failed_bets = 0;
-                
-                foreach ($bkki_pannas as $panna) {
-                    // SIMPLIFIED FORMAT: {"280":500} - using actual panna numbers
-                    $individual_bet_data = [
-                        $panna => $bet_amount
-                    ];
-                    
-                    $bet_id = recordBet($user_id, $game_type_id, $bet_amount, $individual_bet_data, $bet_mode, 'bkki');
-                    
-                    if ($bet_id) {
-                        $successful_bets++;
-                        error_log("Bkki bet recorded - Panna: $panna, Amount: $bet_amount, Bet ID: $bet_id");
-                    } else {
-                        $failed_bets++;
-                        error_log("Failed to record bkki bet for panna: " . $panna . " with amount: " . $bet_amount);
-                    }
-                }
-                
-                if ($successful_bets > 0) {
-                    $_SESSION['success_message'] = "Bkki bet placed successfully! " . 
-                        $successful_bets . " panna bets recorded. INR " . 
-                        number_format($total_bet_amount, 2) . " deducted from your wallet.";
-                    
-                    if ($failed_bets > 0) {
-                        $_SESSION['success_message'] .= " (" . $failed_bets . " bets failed)";
-                        $failed_amount = $bet_amount * $failed_bets;
-                        if ($failed_amount > 0) {
-                            refundBetAmount($user_id, $failed_amount, "Refund for failed bkki bets");
-                        }
-                    }
-                    
-                    $user = getUserData($user_id);
-                    $balance = $user['balance'];
-                    $user_balance = $balance;
-                } else {
-                    $_SESSION['error_message'] = "Failed to record any of your bets. Please try again.";
-                    error_log("All bkki bet recordings failed for user $user_id");
-                    refundBetAmount($user_id, $total_bet_amount, "All bkki bet recordings failed");
-                }
-            } else {
-                $_SESSION['error_message'] = "Failed to deduct amount from your wallet. Please try again.";
-                error_log("Wallet deduction failed for bkki bet - user $user_id");
-            }
-        } 
-        else {
             $_SESSION['error_message'] = "Insufficient funds! You need INR " . 
                 number_format($total_bet_amount, 2) . " but only have INR " . 
                 number_format($balance, 2) . " in your account.";
@@ -1126,7 +1166,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_bkki_bet'])) {
     $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
     header("Location: " . $redirect_url);
     exit();
-}
 }
 
 // Function to get user data
@@ -1440,15 +1479,15 @@ function mapGameTypeToEnum($game_type) {
         'sp_motor' => 'sp_motor',
         'dp_motor' => 'dp_motor',
         'sp' => 'sp',
-        'sp_game' => 'sp',
-        'dp_game' => 'dp',
+        'dp' => 'dp',
         'sp_set' => 'sp_set',
         'dp_set' => 'dp_set',
         'tp_set' => 'tp_set',
         'common' => 'common',
         'series' => 'series',
-          'rown' => 'rown',
-           'eki' => 'eki',      // ADD THIS
+        'abr_cut' => 'abr_cut',
+        'rown' => 'rown',
+        'eki' => 'eki',      // ADD THIS
         'bkki' => 'bkki' 
     ];
     
@@ -2277,45 +2316,33 @@ include 'includes/header.php';
 </div>
 
 <!-- Series Game Interface -->
-<div class="series-interface" style="display: none;">
-    <div class="series-container">
-        <h3>Series Game</h3>
-        
-        <div class="set-info">
-            <p>Select two different digits (1-10) - 0 means 10</p>
-            <p><strong>Rule:</strong> All ascending panna combinations that include both selected digits</p>
-        </div>
-        
-        <div class="series-controls">
-            <div class="control-group">
-                <label for="series-digit1">Select First Digit (0-9, 0 means 10):</label>
-                <select id="series-digit1" onchange="validateSeriesDigits()">
-                    <option value="">Select first digit</option>
-                    <?php for ($i = 0; $i < 10; $i++): ?>
-                        <option value="<?php echo $i; ?>"><?php echo $i; ?> <?php echo $i === 0 ? '(10)' : ''; ?></option>
-                    <?php endfor; ?>
-                </select>
-            </div>
-            
-            <div class="control-group">
-                <div id="series-validation" class="validation-message" style="color:#bd3e4d"></div>
-                <label for="series-digit2">Select Second Digit (0-9, 0 means 10):</label>
-                 
-                <select id="series-digit2" onchange="validateSeriesDigits()">
-                    <option value="">Select second digit</option>
-                    <?php for ($i = 0; $i < 10; $i++): ?>
-                        <option value="<?php echo $i; ?>"><?php echo $i; ?> <?php echo $i === 0 ? '(10)' : ''; ?></option>
-                    <?php endfor; ?>
-                </select>
-               
-            
-            </div>
-            
-            <div class="control-group">
-                <label for="series-amount">Amount per Pana:</label>
-                <input type="number" id="series-amount" min="1" value="1" oninput="updateSeriesTotal()">
-            </div>
-        </div>
+<div class="series-controls">
+    <div class="control-group">
+        <label for="series-digit1">Select First Digit (0-9, 0 means 10):</label>
+        <select id="series-digit1" onchange="validateSeriesDigits()">
+            <option value="">Select first digit</option>
+            <?php for ($i = 0; $i < 10; $i++): ?>
+                <option value="<?php echo $i; ?>"><?php echo $i; ?> <?php echo $i === 0 ? '(10)' : ''; ?></option>
+            <?php endfor; ?>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label for="series-digit2">Select Second Digit (0-9, 0 means 10):</label>
+        <div id="series-validation" class="validation-message" style="color:#bd3e4d"></div>
+        <select id="series-digit2" onchange="validateSeriesDigits()">
+            <option value="">Select second digit</option>
+            <?php for ($i = 0; $i < 10; $i++): ?>
+                <option value="<?php echo $i; ?>"><?php echo $i; ?> <?php echo $i === 0 ? '(10)' : ''; ?></option>
+            <?php endfor; ?>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label for="series-amount">Amount per Pana:</label>
+        <input type="number" id="series-amount" min="1" value="1" oninput="updateSeriesTotal()">
+    </div>
+</div>
         
         <div id="series-outcomes-container" class="pana-combinations">
             <div class="no-digits">Please select two different digits to generate Series outcomes</div>
@@ -2328,11 +2355,11 @@ include 'includes/header.php';
         </div>
         
         <form method="POST" id="series-form">
-            <input type="hidden" name="selected_digit1" id="form-series-digit1">
-            <input type="hidden" name="selected_digit2" id="form-series-digit2">
+            <input type="hidden" name="series_digit1" id="form-series-digit1">
+            <input type="hidden" name="series_digit2" id="form-series-digit2">
             <input type="hidden" name="series_outcomes" id="form-series-outcomes" value="[]">
-            <input type="hidden" name="bet_amount" id="form-series-bet-amount">
-            <input type="hidden" name="mode" id="form-series-mode" value="open">
+            <input type="hidden" name="series-amount" id="form-series-bet-amount">
+            <input type="hidden" name="series_mode" id="form-series-mode" value="open">
             <input type="hidden" name="place_series_bet" value="1">
             
             <button type="submit" class="action-btn place-bet-btn" id="place-series-bet-btn" disabled>
@@ -2723,7 +2750,7 @@ include 'includes/header.php';
 
    
    
-            <div class="last-results">
+            <!-- <div class="last-results">
                 <h3 class="results-title">Last Result</h3>
                 <div class="results-list">
                     <?php foreach ($recent_results as $result): ?>
@@ -2733,7 +2760,7 @@ include 'includes/header.php';
                         </div>
                     <?php endforeach; ?>
                 </div>
-            </div>
+            </div> -->
         </div>
     </main>
 
@@ -4948,7 +4975,7 @@ function toggleGameUI(gameType) {
 
             // SP Set Helper Functions
             function getSpSetDigitValue(digit) {
-                return digit === '0' ? 10 : parseInt(digit);
+              return (digit === '0' || digit === '5') ? 10 : parseInt(digit);
             }
 
             function getSpSetPair(digit) {
@@ -5189,7 +5216,7 @@ function toggleGameUI(gameType) {
 
             // DP Set Helper Functions
             function getDpSetDigitValue(digit) {
-                return digit === '0' ? 10 : parseInt(digit);
+              return (digit === '0' || digit === '5') ? 10 : parseInt(digit);
             }
 
             function getDpSetPair(digit) {
@@ -5457,7 +5484,7 @@ function toggleGameUI(gameType) {
 
     // TP Set Helper Functions
     function getTpSetDigitValue(digit) {
-        return digit === '0' ? 10 : parseInt(digit);
+              return (digit === '0' || digit === '5') ? 10 : parseInt(digit);
     }
 
     function getTpSetDisplayDigit(digit) {
@@ -5937,12 +5964,12 @@ function toggleGameUI(gameType) {
             console.log("005 becomes:", createPanna([0, 0, 5])); // Should be "055"
         });
 </script>
-
-<!-- series -->
+<!-- Series Game  -->
 <script>
-        // Series Game Logic - Two digits, ascending panna containing both digits, 0=10
         let currentSeriesOutcomes = [];
 
+        // Series Game Validation - First digit must be smaller than second digit (0 means 10)
+        // But allow same digits for special case
         function validateSeriesDigits() {
             const digit1 = document.getElementById('series-digit1').value;
             const digit2 = document.getElementById('series-digit2').value;
@@ -5954,8 +5981,13 @@ function toggleGameUI(gameType) {
                 return;
             }
             
-            if (digit1 === digit2) {
-                validationEl.textContent = "Please select two different digits";
+            // Convert digits to numerical values (0 means 10)
+            const num1 = digit1 === '0' ? 10 : parseInt(digit1);
+            const num2 = digit2 === '0' ? 10 : parseInt(digit2);
+            
+            // Allow same digits, but if different, first must be smaller
+            if (digit1 !== digit2 && num1 >= num2) {
+                validationEl.textContent = "First digit must be smaller than second digit (0 means 10)";
                 updateSeriesOutcomes([]);
                 return;
             }
@@ -5964,8 +5996,64 @@ function toggleGameUI(gameType) {
             generateSeriesOutcomes(digit1, digit2);
         }
 
+        // Enhanced: Dynamically update second digit options based on first digit selection
+        function updateSecondDigitOptions() {
+            const digit1 = document.getElementById('series-digit1').value;
+            const digit2Select = document.getElementById('series-digit2');
+            const validationEl = document.getElementById('series-validation');
+            
+            if (!digit1) {
+                // Reset all options if no first digit selected
+                Array.from(digit2Select.options).forEach(option => {
+                    option.disabled = false;
+                    // Reset option text to original
+                    const originalValue = option.value;
+                    option.textContent = originalValue + (originalValue === '0' ? ' (10)' : '');
+                });
+                validationEl.textContent = "";
+                return;
+            }
+            
+            // Convert first digit to numerical value (0 means 10)
+            const num1 = digit1 === '0' ? 10 : parseInt(digit1);
+            
+            // Enable/disable options in second dropdown
+            Array.from(digit2Select.options).forEach(option => {
+                if (!option.value) return; // Skip the "Select second digit" option
+                
+                const optionValue = option.value === '0' ? 10 : parseInt(option.value);
+                
+                // Allow same digit, but disable smaller digits
+                if (option.value === digit1) {
+                    // Allow same digit selection
+                    option.disabled = false;
+                    option.textContent = option.value + (option.value === '0' ? ' (10)' : '') + ' - Same digit (special case)';
+                } else {
+                    option.disabled = optionValue <= num1;
+                    
+                    // Update option text to show why it's disabled
+                    if (optionValue <= num1) {
+                        option.textContent = option.value + (option.value === '0' ? ' (10)' : '') + ' - Must be greater than first digit';
+                    } else {
+                        option.textContent = option.value + (option.value === '0' ? ' (10)' : '');
+                    }
+                }
+            });
+            
+            // Clear any selected invalid value (except same digit)
+            const currentDigit2 = digit2Select.value;
+            if (currentDigit2 && currentDigit2 !== digit1) {
+                const currentNum2 = currentDigit2 === '0' ? 10 : parseInt(currentDigit2);
+                if (currentNum2 <= num1) {
+                    digit2Select.value = "";
+                    validationEl.textContent = "Please select a second digit greater than or equal to the first digit";
+                    updateSeriesOutcomes([]);
+                }
+            }
+        }
+
         function generateSeriesOutcomes(digit1, digit2) {
-            if (!digit1 || !digit2 || digit1 === digit2) {
+            if (!digit1 || !digit2) {
                 updateSeriesOutcomes([]);
                 return;
             }
@@ -6011,8 +6099,30 @@ function toggleGameUI(gameType) {
                             containsDigit2 = (i === num2 || j === num2 || k === num2);
                         }
                         
-                        if (containsDigit1 && containsDigit2) {
-                            outcomes.push(panna);
+                        // If both digits are the same
+                        if (digit1 === digit2) {
+                            let count = 0;
+                            
+                            // Count occurrences of the selected digit
+                            if (num1 === 0) {
+                                if (i === 10) count++;
+                                if (j === 10) count++;
+                                if (k === 10) count++;
+                            } else {
+                                if (i === num1) count++;
+                                if (j === num1) count++;
+                                if (k === num1) count++;
+                            }
+                            
+                            // For same digits, the panna must contain the digit at least twice
+                            if (count >= 2) {
+                                outcomes.push(panna);
+                            }
+                        } else {
+                            // For different digits, both must be present
+                            if (containsDigit1 && containsDigit2) {
+                                outcomes.push(panna);
+                            }
                         }
                     }
                 }
@@ -6027,15 +6137,23 @@ function toggleGameUI(gameType) {
             currentSeriesOutcomes = outcomes;
             
             if (outcomes.length === 0) {
-                container.innerHTML = '<div class="no-digits">Please select two different digits to generate Series outcomes</div>';
+                container.innerHTML = '<div class="no-digits">Please select two valid digits to generate Series outcomes</div>';
             } else {
                 const displayDigit1 = digit1 === '0' ? '0 (10)' : digit1;
                 const displayDigit2 = digit2 === '0' ? '0 (10)' : digit2;
                 
+                let description = '';
+                if (digit1 === digit2) {
+                    description = `${outcomes.length} ascending panna combinations containing digit ${displayDigit1} at least twice`;
+                } else {
+                    description = `${outcomes.length} ascending panna combinations containing both digits ${displayDigit1} and ${displayDigit2}`;
+                }
+                
                 let html = `
                     <div class="pana-header">
-                        <h4>Series Outcomes for Digits ${displayDigit1} and ${displayDigit2}</h4>
-                        <div class="digit-info">${outcomes.length} ascending panna combinations containing both digits ${displayDigit1} and ${displayDigit2}</div>
+                        <h4>Series Outcomes for ${digit1 === digit2 ? `Digit ${displayDigit1} (Same Digit)` : `Digits ${displayDigit1} and ${displayDigit2}`}</h4>
+                        <div class="digit-info">${description}</div>
+                        ${digit1 === digit2 ? '<div class="digit-info special-note"><strong>Special Case:</strong> Same digit selected - showing pannas with digit appearing at least twice</div>' : ''}
                     </div>
                     <div class="pana-list">
                 `;
@@ -6045,10 +6163,21 @@ function toggleGameUI(gameType) {
                     const digits = outcome.split('').map(d => parseInt(d));
                     const sum = digits.reduce((total, digit) => total + (digit === 0 ? 10 : digit), 0);
                     
+                    // Count occurrences of the selected digits for highlighting
+                    const selectedDigit = digit1 === '0' ? 0 : parseInt(digit1);
+                    let digitCount = 0;
+                    digits.forEach(d => {
+                        if (d === selectedDigit) digitCount++;
+                    });
+                    
+                    const isSpecialPanna = digitCount >= 2;
+                    const specialClass = isSpecialPanna ? 'special-panna' : '';
+                    
                     html += `
-                        <div class="pana-item" data-outcome="${outcome}">
+                        <div class="pana-item ${specialClass}" data-outcome="${outcome}">
                             <div class="pana-value-container">
                                 <span class="pana-value">${outcome}</span>
+                            
                             </div>
                         </div>
                     `;
@@ -6085,7 +6214,7 @@ function toggleGameUI(gameType) {
                 validationEl.textContent = "Minimum total bet is INR 5.00";
                 betButton.disabled = true;
             } else if (activeOutcomeCount === 0) {
-                validationEl.textContent = "Please select two different digits to generate outcomes";
+                validationEl.textContent = "Please select two valid digits to generate outcomes";
                 betButton.disabled = true;
             } else if (amount <= 0) {
                 validationEl.textContent = "Please enter a valid bet amount";
@@ -6097,10 +6226,24 @@ function toggleGameUI(gameType) {
         }
 
         // Initialize Series Game
-        document.addEventListener('DOMContentLoaded', function() {
+        function initializeSeriesGame() {
             const seriesAmountInput = document.getElementById('series-amount');
+            const digit1Select = document.getElementById('series-digit1');
+            const digit2Select = document.getElementById('series-digit2');
+            
             if (seriesAmountInput) {
                 seriesAmountInput.addEventListener('input', updateSeriesTotal);
+            }
+            
+            if (digit1Select) {
+                digit1Select.addEventListener('change', function() {
+                    updateSecondDigitOptions();
+                    validateSeriesDigits();
+                });
+            }
+            
+            if (digit2Select) {
+                digit2Select.addEventListener('change', validateSeriesDigits);
             }
             
             // Set mode toggle for Series Game
@@ -6113,7 +6256,65 @@ function toggleGameUI(gameType) {
                     }
                 });
             });
+            
+            // Initialize with no outcomes
+            updateSeriesOutcomes([]);
+        }
+
+        // Auto-initialize when series interface is shown
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if series interface is visible
+            const seriesInterface = document.querySelector('.series-interface');
+            if (seriesInterface && seriesInterface.style.display !== 'none') {
+                initializeSeriesGame();
+            }
+            
+            // Also initialize when game type changes to series
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                        const seriesInterface = document.querySelector('.series-interface');
+                        if (seriesInterface && seriesInterface.style.display === 'block') {
+                            initializeSeriesGame();
+                        }
+                    }
+                });
+            });
+            
+            // Observe the series interface for style changes
+            const seriesInterfaceElement = document.querySelector('.series-interface');
+            if (seriesInterfaceElement) {
+                observer.observe(seriesInterfaceElement, { attributes: true });
+            }
         });
+
+        // Utility function to reset series game
+        function resetSeriesGame() {
+            document.getElementById('series-digit1').value = '';
+            document.getElementById('series-digit2').value = '';
+            document.getElementById('series-amount').value = '1';
+            document.getElementById('series-validation').textContent = '';
+            updateSecondDigitOptions();
+            updateSeriesOutcomes([]);
+        }
+
+        // Export functions for global access if needed
+        window.SeriesGame = {
+            initialize: initializeSeriesGame,
+            validate: validateSeriesDigits,
+            reset: resetSeriesGame,
+            updateOptions: updateSecondDigitOptions
+        };
+
+
+
+        // Inject styles
+        if (!document.querySelector('#series-game-styles')) {
+            const styleSheet = document.createElement('style');
+            styleSheet.id = 'series-game-styles';
+            styleSheet.textContent = seriesStyles;
+            document.head.appendChild(styleSheet);
+        }
 </script>
 <!-- rown -->
 <script>
@@ -6413,140 +6614,141 @@ function toggleGameUI(gameType) {
             const itemsPerPage = 100;
      let totalPages = 1;
 </script>
+<!-- // Abr-Cut Game Logic - Exact 90 pannas -->
 <script>
-// Abr-Cut Game Logic - Exact 90 pannas
-let currentAbrCutAmount = 0;
+        let currentAbrCutAmount = 0;
 
-// Exact 90 Abr-Cut pannas
-const CORRECT_ABR_CUT_PANNAS = [
-    '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
-    '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
-    '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
-    '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
-    '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
-    '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
-    // Additional 30 pannas to make it 90
-    '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
-    '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
-    '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
-];
+        // Exact 90 Abr-Cut pannas
+        const CORRECT_ABR_CUT_PANNAS = [
+            '127', '136', '145', '190', '235', '280', '370', '479', '460', '569',
+            '389', '578', '128', '137', '146', '236', '245', '290', '380', '470',
+            '489', '560', '678', '579', '129', '138', '147', '156', '237', '246',
+            '345', '390', '480', '570', '589', '679', '120', '139', '148', '157',
+            '238', '247', '256', '346', '490', '580', '670', '689', '130', '149',
+            '158', '167', '239', '248', '257', '347', '356', '590', '680', '789',
+            // Additional 30 pannas to make it 90
+            '123', '124', '125', '126', '134', '135', '234', '238', '239', '245',
+            '246', '247', '248', '249', '256', '257', '258', '259', '267', '268',
+            '269', '278', '279', '289', '348', '349', '358', '359', '367', '368'
+        ];
 
-// Helper function to convert digit for calculation (0 becomes 10)
-function getDigitValue(digit) {
-    return digit === '0' ? 10 : parseInt(digit);
-}
+        // Helper function to convert digit for calculation (0 becomes 10)
+        function getDigitValue(digit) {
+            return digit === '0' ? 10 : parseInt(digit);
+        }
 
-// Function to initialize Abr-Cut game
-function initializeAbrCutGame() {
-    // Use the exact 90 Abr-Cut pannas
-    currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
-    
-    // Verify we have exactly 90 pannas
-    if (currentAbrCutOutcomes.length !== 90) {
-        console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
-        // If not exactly 90, take first 90
-        currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
-    }
-    
-    // Populate the grid
-    updateAbrCutOutcomes(currentAbrCutOutcomes);
-    
-    // Set up event listeners
-    document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
-    
-    // Set mode toggle for Abr-Cut
-    document.querySelectorAll('.toggle-option').forEach(option => {
-        option.addEventListener('click', function() {
-            const mode = (this.id === 'open-toggle') ? 'open' : 'close';
-            document.getElementById('form-abr-cut-mode').value = mode;
-        });
-    });
-    
-    // Initial calculation
-    updateAbrCutTotal();
-    
-    console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
-}
-
-// Function to update Abr-Cut outcomes in grid format
-function updateAbrCutOutcomes(outcomes) {
-    const container = document.getElementById('abr-cut-outcomes-container');
-    
-    if (outcomes.length === 0) {
-        container.innerHTML = '<div class="no-digits">No pannas available</div>';
-    } else {
-        let html = `
-            <div class="pana-header">
-                <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
-                <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
-            </div>
-            <div class="pana-list">
-        `;
-        
-        outcomes.forEach((outcome) => {
-            // Calculate sum for display (0 means 10)
-            const digits = outcome.split('').map(d => getDigitValue(d));
-            const sum = digits.reduce((a, b) => a + b, 0);
-            const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
+        // Function to initialize Abr-Cut game
+        function initializeAbrCutGame() {
+            // Use the exact 90 Abr-Cut pannas
+            currentAbrCutOutcomes = CORRECT_ABR_CUT_PANNAS;
             
-            html += `
-                <div class="pana-item" data-outcome="${outcome}">
-                    <div class="pana-value-container">
-                        <span class="pana-value">${outcome}</span>
+            // Verify we have exactly 90 pannas
+            if (currentAbrCutOutcomes.length !== 90) {
+                console.error("Error: Expected 90 pannas, got", currentAbrCutOutcomes.length);
+                // If not exactly 90, take first 90
+                currentAbrCutOutcomes = currentAbrCutOutcomes.slice(0, 90);
+            }
+            
+            // Populate the grid
+            updateAbrCutOutcomes(currentAbrCutOutcomes);
+            
+            // Set up event listeners
+            document.getElementById('abr-cut-amount').addEventListener('input', updateAbrCutTotal);
+            
+            // Set mode toggle for Abr-Cut
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const mode = (this.id === 'open-toggle') ? 'open' : 'close';
+                    document.getElementById('form-abr-cut-mode').value = mode;
+                });
+            });
+            
+            // Initial calculation
+            updateAbrCutTotal();
+            
+            console.log("Abr-Cut Pannas Count:", currentAbrCutOutcomes.length);
+        }
+
+        // Function to update Abr-Cut outcomes in grid format
+        function updateAbrCutOutcomes(outcomes) {
+            const container = document.getElementById('abr-cut-outcomes-container');
+            
+            if (outcomes.length === 0) {
+                container.innerHTML = '<div class="no-digits">No pannas available</div>';
+            } else {
+                let html = `
+                    <div class="pana-header">
+                        <h4>Abr-Cut Panna Combinations (${outcomes.length})</h4>
+                        <div class="digit-info">90 panna combinations (9 pannas from each digit)</div>
                     </div>
-                </div>
-            `;
+                    <div class="pana-list">
+                `;
+                
+                outcomes.forEach((outcome) => {
+                    // Calculate sum for display (0 means 10)
+                    const digits = outcome.split('').map(d => getDigitValue(d));
+                    const sum = digits.reduce((a, b) => a + b, 0);
+                    const sumText = digits.map(d => d === 10 ? '10' : d.toString()).join('+') + '=' + sum;
+                    
+                    html += `
+                        <div class="pana-item" data-outcome="${outcome}">
+                            <div class="pana-value-container">
+                                <span class="pana-value">${outcome}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+            }
+            
+            document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
+        }
+
+        // Function to update Abr-Cut total
+        function updateAbrCutTotal() {
+            const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
+            const activeOutcomeCount = currentAbrCutOutcomes.length;
+            const total = amount * activeOutcomeCount;
+            
+            currentAbrCutAmount = amount;
+            
+            document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
+            document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
+            document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
+            document.getElementById('form-abr-cut-bet-amount').value = amount;
+            
+            // Update form with all outcomes
+            document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
+            
+            // Enable/disable bet button
+            const betButton = document.getElementById('place-abr-cut-bet-btn');
+            const validationEl = document.getElementById('abr-cut-validation');
+            
+            if (total > 0 && total < 5) {
+                validationEl.textContent = "Minimum total bet is INR 5.00";
+                betButton.disabled = true;
+            } else if (activeOutcomeCount === 0) {
+                validationEl.textContent = "No pannas available for betting";
+                betButton.disabled = true;
+            } else if (amount <= 0) {
+                validationEl.textContent = "Please enter a valid bet amount";
+                betButton.disabled = true;
+            } else {
+                validationEl.textContent = "";
+                betButton.disabled = false;
+            }
+        }
+
+        // Initialize when Abr-Cut page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.querySelector('.abr-cut-interface').style.display === 'block') {
+                initializeAbrCutGame();
+            }
         });
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-    
-    document.getElementById('abr-cut-outcomes-count').textContent = outcomes.length;
-}
-
-// Function to update Abr-Cut total
-function updateAbrCutTotal() {
-    const amount = parseFloat(document.getElementById('abr-cut-amount').value) || 0;
-    const activeOutcomeCount = currentAbrCutOutcomes.length;
-    const total = amount * activeOutcomeCount;
-    
-    currentAbrCutAmount = amount;
-    
-    document.getElementById('abr-cut-outcomes-count').textContent = activeOutcomeCount;
-    document.getElementById('abr-cut-amount-per-outcome').textContent = `INR ${amount.toFixed(2)}`;
-    document.getElementById('abr-cut-total-bet-amount').textContent = `INR ${total.toFixed(2)}`;
-    document.getElementById('form-abr-cut-bet-amount').value = amount;
-    
-    // Update form with all outcomes
-    document.getElementById('form-abr-cut-outcomes').value = JSON.stringify(currentAbrCutOutcomes);
-    
-    // Enable/disable bet button
-    const betButton = document.getElementById('place-abr-cut-bet-btn');
-    const validationEl = document.getElementById('abr-cut-validation');
-    
-    if (total > 0 && total < 5) {
-        validationEl.textContent = "Minimum total bet is INR 5.00";
-        betButton.disabled = true;
-    } else if (activeOutcomeCount === 0) {
-        validationEl.textContent = "No pannas available for betting";
-        betButton.disabled = true;
-    } else if (amount <= 0) {
-        validationEl.textContent = "Please enter a valid bet amount";
-        betButton.disabled = true;
-    } else {
-        validationEl.textContent = "";
-        betButton.disabled = false;
-    }
-}
-
-// Initialize when Abr-Cut page loads
-document.addEventListener('DOMContentLoaded', function() {
-    if (document.querySelector('.abr-cut-interface').style.display === 'block') {
-        initializeAbrCutGame();
-    }
-});
 </script>
+
 <!-- ekki bkki -->
  <script>
         // Eki Game Logic - 10 separate odd digit panna combinations
