@@ -130,15 +130,26 @@ function getUserBets($user_id, $where_clause, $params, $param_types, $offset, $b
                 b.placed_at, 
                 b.open_time, 
                 b.close_time,
-                r.result_value,
-                r.declared_at,
+                b.game_session_id,
+                -- Get results from game_sessions table
+                CASE 
+                    WHEN b.bet_mode = 'open' THEN gs.open_result
+                    WHEN b.bet_mode = 'close' THEN gs.close_result
+                    ELSE gs.jodi_result
+                END as result_value,
+                -- Get result declaration time
+                CASE 
+                    WHEN b.bet_mode = 'open' THEN gs.updated_at
+                    WHEN b.bet_mode = 'close' THEN gs.updated_at
+                    ELSE gs.updated_at
+                END as declared_at,
                 CASE 
                     WHEN b.status = 'won' THEN b.potential_win - b.amount
                     WHEN b.status = 'lost' THEN -b.amount
                     ELSE 0 
                 END as profit_loss
             FROM bets b
-            LEFT JOIN results r ON b.game_session_id = r.game_session_id
+            LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
             WHERE $where_clause
             ORDER BY b.placed_at DESC
             LIMIT ? OFFSET ?";
@@ -169,7 +180,7 @@ function getTotalBetsCount($user_id, $where_clause, $params, $param_types) {
     
     $sql = "SELECT COUNT(*) as total 
             FROM bets b
-            LEFT JOIN results r ON b.game_session_id = r.game_session_id
+            LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
             WHERE $where_clause";
     
     $total = 0;
@@ -188,25 +199,41 @@ function getTotalBetsCount($user_id, $where_clause, $params, $param_types) {
     
     return $total;
 }
-
 // Get filtered and paginated bets
 $user_bets = getUserBets($user_id, $where_clause, $params, $param_types, $offset, $bets_per_page);
 $total_bets_count = getTotalBetsCount($user_id, $where_clause, $params, $param_types);
 $total_pages = ceil($total_bets_count / $bets_per_page);
-
-// Calculate totals for stats
+// Calculate totals for stats - UPDATED to check against actual results
 $total_bets = $total_bets_count;
 $total_won = 0;
 $total_lost = 0;
 $total_pending = 0;
 $total_profit = 0;
 
-// Recalculate totals based on filtered data
+// Recalculate totals based on filtered data and actual results
 foreach ($user_bets as $bet) {
-    if ($bet['status'] === 'won') {
+    // Check if bet is won based on actual result
+    $is_won = false;
+    $is_lost = false;
+    
+    if (!empty($bet['result_value'])) {
+        // Parse the numbers played to check against result
+        $numbers_data = json_decode($bet['numbers_played'], true);
+        if ($numbers_data) {
+            foreach ($numbers_data as $played_number => $amount) {
+                if ($played_number == $bet['result_value']) {
+                    $is_won = true;
+                    break;
+                }
+            }
+            $is_lost = !$is_won;
+        }
+    }
+    
+    if ($is_won) {
         $total_won++;
         $total_profit += $bet['profit_loss'];
-    } elseif ($bet['status'] === 'lost') {
+    } elseif ($is_lost) {
         $total_lost++;
         $total_profit += $bet['profit_loss'];
     } elseif ($bet['status'] === 'pending') {
