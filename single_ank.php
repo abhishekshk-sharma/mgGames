@@ -1440,16 +1440,16 @@ function mapGameTypeToEnum($game_type) {
         'sp_motor' => 'sp_motor',
         'dp_motor' => 'dp_motor',
         'sp' => 'sp',
-        'sp_game' => 'sp',
-        'dp_game' => 'dp',
+        'dp' => 'dp',
         'sp_set' => 'sp_set',
         'dp_set' => 'dp_set',
         'tp_set' => 'tp_set',
         'common' => 'common',
         'series' => 'series',
-          'rown' => 'rown',
-           'eki' => 'eki',      // ADD THIS
-        'bkki' => 'bkki' 
+        'rown' => 'rown',
+        'eki' => 'eki',      // ADD THIS
+        'bkki' => 'bkki', 
+        'abr_cut' => 'abr_cut' 
     ];
     
     return isset($mapping[$game_type]) ? $mapping[$game_type] : 'single_ank';
