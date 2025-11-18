@@ -1632,6 +1632,42 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
             font-weight: 500;
             display: inline-block;
         }
+    
+    .game-type-numbers {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1.2rem;
+    transition: all 0.3s ease;
+}
+
+.game-type-numbers:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 60, 126, 0.3);
+}
+
+.game-type-numbers h4 {
+    color: var(--secondary);
+    font-size: 1.1rem;
+}
+
+.game-type-numbers .numbers-grid {
+    margin-top: 0.8rem;
+}
+
+.game-type-numbers .number-item {
+    padding: 0.6rem;
+    font-size: 0.9rem;
+}
+
+.game-type-numbers .number-value {
+    font-size: 1rem;
+    margin-bottom: 0.2rem;
+}
+
+.game-type-numbers .number-amount {
+    font-size: 0.75rem;
+}
 
 </style>
 
@@ -1927,62 +1963,160 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
                 </div>
             </div>
 
-            <!-- Most Frequent Numbers -->
-            <?php if (!empty($most_frequent_numbers)): ?>
-            <div class="dashboard-section">
-                <h2 class="section-title"><i class="fas fa-sort-amount-down"></i> Most Played Numbers</h2>
-                <div class="numbers-grid">
-                    <?php foreach ($most_frequent_numbers as $number => $amount): ?>
-                        <?php 
-                        $is_over_limit = !$pnl_ratio && isset($forwarded_amounts[$number]);
-                        $original_amount = $is_over_limit ? ($amount + $forwarded_amounts[$number]) : $amount;
-                        ?>
-                        <div class="number-item <?php echo $is_over_limit ? 'over-limit' : ''; ?>">
-                            <div class="number-value"><?php echo htmlspecialchars($number); ?></div>
-                            <div class="number-amount">
-                                ₹<?php echo number_format($amount, 2); ?>
-                                <?php if ($is_over_limit): ?>
-                                    <br><small style="color: #ffc107;">(of ₹<?php echo number_format($original_amount, 2); ?>)</small>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+<!-- Most Frequent Numbers by Game Type -->
+<?php if (!empty($number_amounts)): ?>
+<div class="dashboard-section">
+    <h2 class="section-title"><i class="fas fa-sort-amount-down"></i> Most Played Numbers by Game Type</h2>
+    
+    <?php
+    // Group numbers by game type
+    $numbers_by_game_type = [];
+    
+    foreach ($bets_for_stats as $bet) {
+        $game_type = $bet['game_type'];
+        $numbers = json_decode($bet['numbers_played'], true);
+        
+        if (is_array($numbers)) {
+            if (isset($numbers['selected_digits'])) {
+                // For SP Motor
+                $digits = $numbers['selected_digits'];
+                $amount_per_pana = $numbers['amount_per_pana'] ?? 0;
                 
-                <?php if (!empty($forwarded_amounts)): ?>
-                    <div class="forward-badge">
-                        <i class="fas fa-share-alt"></i>
-                        <strong>Forwarded Amounts:</strong> 
-                        <?php 
-                        $forwarded_details = [];
-                        foreach ($forwarded_amounts as $number => $amount) {
-                            if ($amount > 0) {
-                                $forwarded_details[] = $number . ': ₹' . number_format($amount, 2);
-                            }
+                if (!isset($numbers_by_game_type[$game_type][$digits])) {
+                    $numbers_by_game_type[$game_type][$digits] = 0;
+                }
+                $numbers_by_game_type[$game_type][$digits] += $amount_per_pana * count($numbers['pana_combinations'] ?? []);
+                
+                if (isset($numbers['pana_combinations'])) {
+                    foreach ($numbers['pana_combinations'] as $pana) {
+                        if (!isset($numbers_by_game_type[$game_type][$pana])) {
+                            $numbers_by_game_type[$game_type][$pana] = 0;
                         }
-                        echo implode(' | ', $forwarded_details);
-                        ?>
+                        $numbers_by_game_type[$game_type][$pana] += $amount_per_pana;
+                    }
+                }
+            } else {
+                // For single number bets
+                foreach ($numbers as $number => $amount) {
+                    if (!isset($numbers_by_game_type[$game_type][$number])) {
+                        $numbers_by_game_type[$game_type][$number] = 0;
+                    }
+                    $numbers_by_game_type[$game_type][$number] += $amount;
+                }
+            }
+        }
+    }
+    
+    // Apply PNL ratio or bet limit for display
+    $display_numbers_by_game_type = [];
+    foreach ($numbers_by_game_type as $game_type => $numbers) {
+        $display_numbers_by_game_type[$game_type] = [];
+        
+        foreach ($numbers as $number => $amount) {
+            if ($pnl_ratio) {
+                // For PNL ratio, show the full amount but indicate sharing
+                $display_numbers_by_game_type[$game_type][$number] = $amount;
+            } else {
+                // For bet limit, show min(amount, bet_limit)
+                $display_numbers_by_game_type[$game_type][$number] = min($amount, $bet_limit);
+            }
+        }
+        
+        // Sort by amount descending and take top 10
+        arsort($display_numbers_by_game_type[$game_type]);
+        $display_numbers_by_game_type[$game_type] = array_slice($display_numbers_by_game_type[$game_type], 0, 10, true);
+    }
+    ?>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 1.5rem;">
+        <?php foreach ($display_numbers_by_game_type as $game_type => $numbers): ?>
+            <?php if (!empty($numbers)): ?>
+                <div class="game-type-numbers">
+                    <h4 style="margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                        <i class="fas fa-dice"></i> 
+                        <?php echo ucfirst(str_replace('_', ' ', $game_type)); ?>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">
+                            (<?php echo count($numbers); ?> numbers)
+                        </span>
+                    </h4>
+                    
+                    <div class="numbers-grid" style="grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 0.6rem;">
+                        <?php foreach ($numbers as $number => $amount): ?>
+                            <?php 
+                            $is_over_limit = !$pnl_ratio && isset($forwarded_amounts[$number]);
+                            $original_amount = $is_over_limit ? ($amount + $forwarded_amounts[$number]) : $amount;
+                            ?>
+                            <div class="number-item <?php echo $is_over_limit ? 'over-limit' : ''; ?>">
+                                <div class="number-value"><?php echo htmlspecialchars($number); ?></div>
+                                <div class="number-amount" style="font-size: 0.8rem;">
+                                    ₹<?php echo number_format($amount, 2); ?>
+                                    <?php if ($is_over_limit): ?>
+                                        <br><small style="color: #ffc107; font-size: 0.7rem;">
+                                            (of ₹<?php echo number_format($original_amount, 2); ?>)
+                                        </small>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
-                <?php endif; ?>
-                
-                <?php if ($pnl_ratio): ?>
-                    <div class="forward-badge">
-                        <i class="fas fa-handshake"></i>
-                        <strong>PNL Sharing Active:</strong> 
-                        Your Share: <?php echo $admin_ratio; ?>% | 
-                        Forwarded Share: <?php echo $forward_ratio; ?>% |
-                        Forwarded Amount: ₹<?php echo number_format($forwarded_total, 2); ?>
-                    </div>
-                    <?php else: ?>
-                    <div class="forward-badge">
-                        <i class="fas fa-share-alt"></i>
-                        <strong>Bet Limit Active:</strong> 
-                        Limit: ₹<?php echo number_format($bet_limit); ?> per number |
-                        Forwarded Amount: ₹<?php echo number_format($forwarded_total, 2); ?>
-                    </div>
-                <?php endif; ?>
-            </div>  
+                    
+                    <?php 
+                    // Calculate forwarded amounts for this game type
+                    $game_type_forwarded = [];
+                    foreach ($forwarded_amounts as $number => $amount) {
+                        if ($amount > 0 && isset($numbers_by_game_type[$game_type][$number])) {
+                            $game_type_forwarded[] = $number . ': ₹' . number_format($amount, 2);
+                        }
+                    }
+                    ?>
+                    
+                    <?php if (!empty($game_type_forwarded)): ?>
+                        <div class="forward-badge" style="margin-top: 1rem; padding: 0.7rem; font-size: 0.85rem;">
+                            <i class="fas fa-share-alt"></i>
+                            <strong>Forwarded:</strong> 
+                            <?php echo implode(' | ', $game_type_forwarded); ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
+        <?php endforeach; ?>
+    </div>
+    
+    <!-- Global Forwarding Information -->
+    <?php if (!empty($forwarded_amounts)): ?>
+        <div class="forward-badge" style="margin-top: 1.5rem;">
+            <i class="fas fa-share-alt"></i>
+            <strong>Total Forwarded Amounts:</strong> 
+            <?php 
+            $forwarded_details = [];
+            foreach ($forwarded_amounts as $number => $amount) {
+                if ($amount > 0) {
+                    $forwarded_details[] = $number . ': ₹' . number_format($amount, 2);
+                }
+            }
+            echo implode(' | ', $forwarded_details);
+            ?>
+        </div>
+    <?php endif; ?>
+    
+    <?php if ($pnl_ratio): ?>
+        <div class="forward-badge" style="margin-top: 1rem;">
+            <i class="fas fa-handshake"></i>
+            <strong>PNL Sharing Active:</strong> 
+            Your Share: <?php echo $admin_ratio; ?>% | 
+            Forwarded Share: <?php echo $forward_ratio; ?>% |
+            Total Forwarded: ₹<?php echo number_format($forwarded_total, 2); ?>
+        </div>
+    <?php else: ?>
+        <div class="forward-badge" style="margin-top: 1rem;">
+            <i class="fas fa-share-alt"></i>
+            <strong>Bet Limit Active:</strong> 
+            Limit: ₹<?php echo number_format($bet_limit); ?> per number |
+            Total Forwarded: ₹<?php echo number_format($forwarded_total, 2); ?>
+        </div>
+    <?php endif; ?>
+</div>  
+<?php endif; ?>
 
             <!-- Top Users -->
             <?php if (!empty($top_users)): ?>

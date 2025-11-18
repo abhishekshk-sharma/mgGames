@@ -30,7 +30,7 @@ $limit_result = $limit_stmt->get_result();
 $admin_limits = $limit_result->fetch_assoc();
 
 $bet_limit = $admin_limits['bet_limit'] ?? 100;
-$pnl_ratio = $admin_limits['pnl_ratio'];
+$pnl_ratio = $admin_limits['pnl_ratio'] ?? null;
 
 // Parse PNL ratio if set
 $admin_ratio = 0;

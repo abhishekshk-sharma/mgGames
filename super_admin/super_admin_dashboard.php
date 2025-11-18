@@ -1,5 +1,5 @@
 <?php
-// admin_dashboard.php
+// super_admin_dashboard.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -7,57 +7,63 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as admin
-if (!isset($_SESSION['admin_id'])) {
-    header("location: login.php");
+// Redirect if not logged in as super admin
+if (!isset($_SESSION['super_admin_id'])) {
+    header("location: super_admin_login.php");
     exit;
 }
 
-// Get admin details
-$admin_id = $_SESSION['admin_id'];
-$admin_username = $_SESSION['admin_username'];
-
-// Get admin referral code
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_result = $stmt->get_result();
-$admin_data = $referral_result->fetch_assoc();
-$referral_code = $admin_data['referral_code'];
-
-// Get broker limit details
-$broker_limit = [];
-$stmt = $conn->prepare("SELECT * FROM broker_limit WHERE admin_id = ?");
-$stmt->execute([$admin_id]);
-$broker_result = $stmt->get_result();
-if ($broker_result->num_rows > 0) {
-    $broker_limit = $broker_result->fetch_assoc();
-}
+// Get super admin details
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
 // Get stats for dashboard
-$users_count = 0;
+$admins_count = 0;
+$active_admins = 0;
+$total_users = 0;
 $active_users = 0;
 $total_deposits = 0;
 $total_withdrawals = 0;
 $pending_withdrawals = 0;
 $total_games = 0;
+$total_revenue = 0;
 
-// Count total users
-$sql = "SELECT COUNT(*) as count FROM users WHERE referral_code = ?";
-$stmt = $conn->prepare($sql);
-$stmt->execute([$referral_code]);
-$result = $stmt->get_result();
+// Count total admins
+$sql = "SELECT COUNT(*) as count FROM admins WHERE status = 'active'";
+$result = $conn->query($sql);
 if ($result) {
     $row = $result->fetch_assoc();
-    $users_count = $row['count'];
+    $admins_count = $row['count'];
+}
+
+// Count active admins (admins with recent activity - last 30 days)
+$sql = "SELECT COUNT(DISTINCT a.id) as count 
+        FROM admins a 
+        WHERE a.status = 'active' 
+        AND EXISTS (
+            SELECT 1 FROM transactions t 
+            JOIN users u ON t.user_id = u.id 
+            WHERE u.referral_code = a.referral_code 
+            AND t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        )";
+$result = $conn->query($sql);
+if ($result) {
+    $row = $result->fetch_assoc();
+    $active_admins = $row['count'];
+}
+
+// Count total users
+$sql = "SELECT COUNT(*) as count FROM users";
+$result = $conn->query($sql);
+if ($result) {
+    $row = $result->fetch_assoc();
+    $total_users = $row['count'];
 }
 
 // Count active users (users with recent activity - last 30 days)
 $sql = "SELECT COUNT(DISTINCT user_id) as count FROM transactions 
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) 
-        AND user_id IN (SELECT id FROM users WHERE referral_code = ?)";
-$stmt = $conn->prepare($sql);
-$stmt->execute([$referral_code]);
-$result = $stmt->get_result();
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+$result = $conn->query($sql);
 if ($result) {
     $row = $result->fetch_assoc();
     $active_users = $row['count'];
@@ -71,55 +77,82 @@ if ($result) {
     $total_games = $row['count'];
 }
 
-// Get total deposits
+// Get total deposits across all admins
 $sql = "SELECT SUM(t.amount) as total FROM transactions t 
-        JOIN users u ON t.user_id = u.id  
-        WHERE t.type = 'deposit' AND t.status = 'completed' 
-        AND u.referral_code = ?";
-$stmt = $conn->prepare($sql);
-$stmt->execute([$referral_code]);
-$result = $stmt->get_result();
+        WHERE t.type = 'deposit' AND t.status = 'completed'";
+$result = $conn->query($sql);
 if ($result) {
     $row = $result->fetch_assoc();
     $total_deposits = $row['total'] ? $row['total'] : 0;
 }
 
-// Get total withdrawals
+// Get total withdrawals across all admins
 $sql = "SELECT SUM(t.amount) as total FROM transactions t 
-        JOIN users u ON t.user_id = u.id 
-        WHERE t.type = 'withdrawal' AND t.status = 'completed' 
-        AND u.referral_code = ?";
-$stmt = $conn->prepare($sql);
-$stmt->execute([$referral_code]);
-$result = $stmt->get_result();
+        WHERE t.type = 'withdrawal' AND t.status = 'completed'";
+$result = $conn->query($sql);
 if ($result) {
     $row = $result->fetch_assoc();
     $total_withdrawals = $row['total'] ? $row['total'] : 0;
 }
 
-// Get pending withdrawals
+// Get pending withdrawals across all admins
 $sql = "SELECT SUM(t.amount) as total FROM transactions t 
-        JOIN users u ON t.user_id = u.id 
-        WHERE t.type = 'withdrawal' AND t.status = 'pending' 
-        AND u.referral_code = ?";
-$stmt = $conn->prepare($sql);
-$stmt->execute([$referral_code]);
-$result = $stmt->get_result();
+        WHERE t.type = 'withdrawal' AND t.status = 'pending'";
+$result = $conn->query($sql);
 if ($result) {
     $row = $result->fetch_assoc();
     $pending_withdrawals = $row['total'] ? $row['total'] : 0;
 }
 
-// Get recent transactions function
-function get_recent_transactions($conn, $referral_code, $limit = 5) {
-    $sql = "SELECT t.id, u.username, t.type, t.amount, t.status, t.created_at 
+// Calculate total revenue (deposits - withdrawals)
+$total_revenue = $total_deposits - $total_withdrawals;
+
+// Get admin performance data
+function get_admin_performance($conn) {
+    $sql = "SELECT 
+            a.id,
+            a.username,
+            a.referral_code,
+            a.status,
+            COUNT(DISTINCT u.id) as total_users,
+            COUNT(DISTINCT CASE WHEN u.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN u.id END) as new_users,
+            SUM(CASE WHEN t.type = 'deposit' AND t.status = 'completed' THEN t.amount ELSE 0 END) as total_deposits,
+            SUM(CASE WHEN t.type = 'withdrawal' AND t.status = 'completed' THEN t.amount ELSE 0 END) as total_withdrawals,
+            COUNT(DISTINCT b.id) as total_bets
+            FROM admins a
+            LEFT JOIN users u ON u.referral_code = a.referral_code
+            LEFT JOIN transactions t ON t.user_id = u.id
+            LEFT JOIN bets b ON b.user_id = u.id
+            WHERE a.status = 'active'
+            GROUP BY a.id, a.username, a.referral_code
+            ORDER BY total_deposits DESC
+            LIMIT 10";
+    
+    $result = $conn->query($sql);
+    $admins = [];
+    while ($row = $result->fetch_assoc()) {
+        $admins[] = $row;
+    }
+    return $admins;
+}
+
+// Get recent transactions with admin info
+function get_recent_transactions($conn, $limit = 10) {
+    $sql = "SELECT 
+            t.id, 
+            u.username as user_name,
+            a.username as admin_name,
+            t.type, 
+            t.amount, 
+            t.status, 
+            t.created_at 
             FROM transactions t 
             JOIN users u ON t.user_id = u.id 
-            WHERE u.referral_code = ?
+            JOIN admins a ON u.referral_code = a.referral_code
             ORDER BY t.created_at DESC 
             LIMIT ?";
     $stmt = $conn->prepare($sql);
-    $stmt->execute([$referral_code, $limit]);
+    $stmt->execute([$limit]);
     $result = $stmt->get_result();
     
     $transactions = [];
@@ -129,16 +162,22 @@ function get_recent_transactions($conn, $referral_code, $limit = 5) {
     return $transactions;
 }
 
-// Get recent withdrawals function
-function get_recent_withdrawals($conn, $referral_code, $limit = 5) {
-    $sql = "SELECT w.id, u.username, w.amount, w.status, w.created_at 
+// Get recent withdrawals with admin info
+function get_recent_withdrawals($conn, $limit = 10) {
+    $sql = "SELECT 
+            w.id, 
+            u.username as user_name,
+            a.username as admin_name,
+            w.amount, 
+            w.status, 
+            w.created_at 
             FROM withdrawals w 
             JOIN users u ON w.user_id = u.id 
-            WHERE u.referral_code = ?
+            JOIN admins a ON u.referral_code = a.referral_code
             ORDER BY w.created_at DESC 
             LIMIT ?";
     $stmt = $conn->prepare($sql);
-    $stmt->execute([$referral_code, $limit]);
+    $stmt->execute([$limit]);
     $result = $stmt->get_result();
     
     $withdrawals = [];
@@ -148,8 +187,31 @@ function get_recent_withdrawals($conn, $referral_code, $limit = 5) {
     return $withdrawals;
 }
 
-// Get revenue data for charts with different time periods
-function get_revenue_data($conn, $referral_code, $period = 'week') {
+// Get recent user registrations with admin info
+function get_recent_registrations($conn, $limit = 10) {
+    $sql = "SELECT 
+            u.id,
+            u.username,
+            u.email,
+            a.username as admin_name,
+            u.created_at
+            FROM users u
+            JOIN admins a ON u.referral_code = a.referral_code
+            ORDER BY u.created_at DESC 
+            LIMIT ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute([$limit]);
+    $result = $stmt->get_result();
+    
+    $registrations = [];
+    while ($row = $result->fetch_assoc()) {
+        $registrations[] = $row;
+    }
+    return $registrations;
+}
+
+// Get revenue data for charts
+function get_revenue_data($conn, $period = 'week') {
     $start_date = '';
     $end_date = date('Y-m-d');
     $date_format = 'M j';
@@ -169,7 +231,6 @@ function get_revenue_data($conn, $referral_code, $period = 'week') {
             $date_format = 'M j';
             break;
         case 'custom':
-            // For custom, we'll handle via AJAX
             $start_date = date('Y-m-d', strtotime('-6 days'));
             $date_format = 'M j';
             break;
@@ -191,14 +252,12 @@ function get_revenue_data($conn, $referral_code, $period = 'week') {
             SUM(CASE WHEN type = 'withdrawal' AND t.status = 'completed' THEN amount ELSE 0 END) as withdrawals,
             SUM(CASE WHEN type = 'winning' THEN amount ELSE 0 END) as winnings
             FROM transactions t
-            JOIN users u ON t.user_id = u.id
-            WHERE u.referral_code = ? 
-            AND DATE(t.created_at) BETWEEN ? AND ?
+            WHERE DATE(t.created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at)
             ORDER BY date ASC";
     
     $stmt = $conn->prepare($sql);
-    $stmt->execute([$referral_code, $start_date, $end_date]);
+    $stmt->execute([$start_date, $end_date]);
     $result = $stmt->get_result();
     
     // Initialize arrays with zeros
@@ -227,61 +286,57 @@ function get_revenue_data($conn, $referral_code, $period = 'week') {
     ];
 }
 
-// Get user activity data
-function get_user_activity_data($conn, $referral_code) {
-    // Active users (played in last 7 days)
-    $sql = "SELECT COUNT(DISTINCT user_id) as active_users 
-            FROM bets 
-            WHERE user_id IN (SELECT id FROM users WHERE referral_code = ?)
-            AND placed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
-    $stmt = $conn->prepare($sql);
-    $stmt->execute([$referral_code]);
-    $result = $stmt->get_result();
-    $active_users = $result->fetch_assoc()['active_users'] ?? 0;
+// Get admin distribution data
+function get_admin_distribution_data($conn) {
+    $sql = "SELECT 
+            a.username,
+            COUNT(DISTINCT u.id) as user_count,
+            SUM(CASE WHEN t.type = 'deposit' AND t.status = 'completed' THEN t.amount ELSE 0 END) as deposit_amount
+            FROM admins a
+            LEFT JOIN users u ON u.referral_code = a.referral_code
+            LEFT JOIN transactions t ON t.user_id = u.id AND t.type = 'deposit' AND t.status = 'completed'
+            WHERE a.status = 'active'
+            GROUP BY a.id, a.username
+            ORDER BY deposit_amount DESC
+            LIMIT 10";
     
-    // New users (registered in last 7 days)
-    $sql = "SELECT COUNT(*) as new_users 
-            FROM users 
-            WHERE referral_code = ? 
-            AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
-    $stmt = $conn->prepare($sql);
-    $stmt->execute([$referral_code]);
-    $result = $stmt->get_result();
-    $new_users = $result->fetch_assoc()['new_users'] ?? 0;
+    $result = $conn->query($sql);
+    $admins = [];
+    $user_counts = [];
+    $deposit_amounts = [];
     
-    // Total users
-    $sql = "SELECT COUNT(*) as total_users 
-            FROM users 
-            WHERE referral_code = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->execute([$referral_code]);
-    $result = $stmt->get_result();
-    $total_users = $result->fetch_assoc()['total_users'] ?? 0;
-    
-    $returning_users = max(0, $total_users - $new_users);
+    while ($row = $result->fetch_assoc()) {
+        $admins[] = $row['username'];
+        $user_counts[] = $row['user_count'];
+        $deposit_amounts[] = floatval($row['deposit_amount']);
+    }
     
     return [
-        'active' => $active_users,
-        'new' => $new_users,
-        'returning' => $returning_users
+        'admins' => $admins,
+        'user_counts' => $user_counts,
+        'deposit_amounts' => $deposit_amounts
     ];
 }
 
-// Get initial data for charts (default: week)
-$revenue_data = get_revenue_data($conn, $referral_code, 'week');
-$user_activity_data = get_user_activity_data($conn, $referral_code);
+// Get initial data for charts
+$revenue_data = get_revenue_data($conn, 'week');
+$admin_distribution_data = get_admin_distribution_data($conn);
 
 // Get recent data
-$recent_transactions = get_recent_transactions($conn, $referral_code, 5);
-$recent_withdrawals = get_recent_withdrawals($conn, $referral_code, 5);
-$title = "Admin Dashboard - RB Games.";
+$recent_transactions = get_recent_transactions($conn, 5);
+$recent_withdrawals = get_recent_withdrawals($conn, 5);
+$recent_registrations = get_recent_registrations($conn, 5);
+$top_admins = get_admin_performance($conn);
+
+$title = "Super Admin Dashboard - RB Games";
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo ($title)?$title:"Admin Dashboard - RB Games"; ?> </title>
+    <title><?php echo $title; ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -1008,6 +1063,7 @@ $title = "Admin Dashboard - RB Games.";
                     gap: 0.8rem;
                 }
                 
+                
                 .admin-badge, .current-time {
                     width: 100%;
                     justify-content: center;
@@ -1175,8 +1231,9 @@ $title = "Admin Dashboard - RB Games.";
                 color: var(--text-muted);
             }
     </style>
+
     <style>
-        /* Your existing CSS styles remain the same */
+        /* Use the same CSS styles from your admin dashboard */
         :root {
             --primary: #ff3c7e;
             --secondary: #0fb4c9;
@@ -1212,176 +1269,113 @@ $title = "Admin Dashboard - RB Games.";
             min-height: 100vh;
         }
 
-        /* All your existing CSS styles... */
-        /* I'm keeping them the same as in your original file to save space */
+        /* Include all your existing CSS styles from the admin dashboard */
+        /* I'm including the key styles but you can copy the complete CSS from your admin dashboard */
 
-        /* Chart container fixes */
-        .chart-container {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 1.8rem;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border-color);
-            height: 400px;
-            position: relative;
-            overflow-x:scroll;
-        }
-
-        .chart-wrapper {
-            position: relative;
-            height: 300px;
-            width: 100%;
-        }
-
-        /* Custom date range styles */
-        .custom-date-range {
-            display: none;
-            gap: 10px;
-            margin-top: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .custom-date-range.active {
-            display: flex;
-        }
-
-        .date-input-group {
+        .sidebar {
+            width: 260px;
+            background: var(--dark);
+            box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
             display: flex;
             flex-direction: column;
-            gap: 5px;
-        }
-
-        .date-input-group label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .date-input {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 8px 12px;
-            color: var(--text-light);
-            font-size: 0.9rem;
-        }
-
-        .date-input:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .apply-custom-date {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-top: 20px;
+            position: fixed;
+            height: 100vh;
             transition: all 0.3s ease;
+            overflow-y: auto;
+            left: 0;
+            top: 0;
         }
 
-        .apply-custom-date:hover {
-            background: var(--secondary);
+        .admin-info {
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-block;
+            background: rgba(255, 60, 126, 0.2);
+            color: var(--primary);
+            border: 1px solid rgba(255, 60, 126, 0.3);
         }
 
-        /* Broker Limit Styles */
-        .broker-limit-card {
+        .main-content {
+            flex: 1;
+            padding: 2.2rem;
+            margin-left: 260px;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            min-height: 100vh;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.8rem;
+            margin-bottom: 2.2rem;
+        }
+
+        .stat-card {
             background: var(--card-bg);
             border-radius: 12px;
             padding: 1.8rem;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
             border: 1px solid var(--border-color);
-            margin-bottom: 2.2rem;
+            transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
         }
 
-        .broker-limit-card::before {
+        .stat-card::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             width: 5px;
             height: 100%;
-            background: linear-gradient(to bottom, var(--warning), var(--accent));
+            background: linear-gradient(to bottom, var(--primary), var(--secondary));
         }
 
-        .limit-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 0;
-            border-bottom: 1px solid var(--border-color);
+        .dashboard-section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.8rem;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-color);
+            margin-bottom: 2.2rem;
         }
 
-        .limit-item:last-child {
-            border-bottom: none;
-        }
-
-        .limit-label {
-            color: var(--text-muted);
-            font-weight: 500;
-        }
-
-        .limit-value {
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-
-        .limit-used {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-
-        /* Progress bars */
-        .progress-bar {
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 0.5rem;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }
-        
-        .progress-success {
-            background: var(--success);
-        }
-        
-        .progress-warning {
-            background: var(--warning);
-        }
-        
-        .progress-danger {
-            background: var(--danger);
-        }
-        
-        /* Mini stats */
-        .mini-stats {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 1rem;
-        }
-        
-        .mini-stat {
-            text-align: center;
-        }
-        
-        .mini-stat-value {
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-        
-        .mini-stat-label {
+        /* Add any additional styles needed for super admin specific elements */
+        .admin-badge {
+            background: rgba(255, 193, 7, 0.2);
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
             font-size: 0.8rem;
-            color: var(--text-muted);
+            color: #ffc107;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .revenue-positive {
+            color: var(--success);
+        }
+
+        .revenue-negative {
+            color: var(--danger);
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
         }
     </style>
 </head>
@@ -1398,53 +1392,57 @@ $title = "Admin Dashboard - RB Games.";
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h2>RB Games</h2>
+                <h2>RB Games - Super Admin</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item active">
+                <a href="super_admin_dashboard.php" class="menu-item active">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="users.php" class="menu-item">
+                <a href="super_admin_manage_admins.php" class="menu-item">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="super_admin_all_users.php" class="menu-item">
                     <i class="fas fa-users"></i>
-                    <span>Users</span>
+                    <span>All Users</span>
                 </a>
-                <a href="todays_active_games.php" class="menu-item">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
+                <a href="super_admin_transactions.php" class="menu-item">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>All Transactions</span>
                 </a>
-                <a href="game_sessions_history.php" class="menu-item">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
+                <a href="super_admin_withdrawals.php" class="menu-item">
                     <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
+                    <span>All Withdrawals</span>
                 </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
+                <a href="super_admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>All Deposits</span>
                 </a>
-                <a href="admin_reports.php" class="menu-item">
+                <a href="admin_games.php" class="menu-item">
+                    <i class="fa-regular fa-pen-to-square"></i>
+                    <span>Edit Games</span>
+                </a>
+                <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
+                    <span>Platform Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="profit_loss.php" class="menu-item ">
+                    <i class="fa-solid fa-sack-dollar"></i>
+                    <span>Profit & Loss</span>
+                </a>
+                <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
+                </a>
+                <a href="super_admin_settings.php" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -1453,128 +1451,128 @@ $title = "Admin Dashboard - RB Games.";
         <div class="main-content" id="mainContent">
             <div class="header">
                 <div class="welcome">
-                    <h1>Admin Dashboard</h1>
-                    <p>Welcome back, <span class="admin-name"><?php echo $admin_username; ?></span>. Here's what's happening with your platform today.</p>
+                    <h1>Super Admin Dashboard</h1>
+                    <p>Welcome back, <span class="admin-name">Super Admin <?php echo $super_admin_username; ?></span>. Platform overview and analytics.</p>
                 </div>
-                <div class="header-actions">
+                <div class="header-actions" title="<?php echo date('l, F j, Y'); ?>">
                     <div class="current-time">
                         <i class="fas fa-clock"></i>
                         <span><?php echo date('l, F j, Y'); ?></span>
                     </div>
-                    <a href="admin_logout.php" class="logout-btn">
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
                 </div>
             </div>
-      
 
-
-            <!-- Stats Cards -->
+            <!-- Platform Overview Stats -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-card-header">
-                        <div class="stat-card-title">Total Users</div>
+                        <div class="stat-card-title">Total Admins</div>
                         <div class="stat-card-icon users-icon">
+                            <i class="fas fa-user-shield"></i>
+                        </div>
+                    </div>
+                    <div class="stat-card-value"><?php echo $admins_count; ?></div>
+                    <div class="stat-card-desc">Active platform admins</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <div class="stat-card-title">Total Users</div>
+                        <div class="stat-card-icon active-users-icon">
                             <i class="fas fa-users"></i>
                         </div>
                     </div>
-                    <div class="stat-card-value"><?php echo $users_count; ?></div>
+                    <div class="stat-card-value"><?php echo $total_users; ?></div>
                     <div class="stat-card-desc">Registered users</div>
                 </div>
 
                 <div class="stat-card">
                     <div class="stat-card-header">
-                        <div class="stat-card-title">Total Games</div>
-                        <div class="stat-card-icon active-users-icon">
-                            <i class="fas fa-gamepad"></i>
+                        <div class="stat-card-title">Total Revenue</div>
+                        <div class="stat-card-icon deposits-icon">
+                            <i class="fas fa-chart-line"></i>
                         </div>
                     </div>
-                    <div class="stat-card-value"><?php echo $total_games; ?></div>
-                    <div class="stat-card-desc">Available games</div>
+                    <div class="stat-card-value <?php echo $total_revenue >= 0 ? 'revenue-positive' : 'revenue-negative'; ?>">
+                        $<?php echo number_format($total_revenue, 2); ?>
+                    </div>
+                    <div class="stat-card-desc">Platform net revenue</div>
                 </div>
 
                 <div class="stat-card">
                     <div class="stat-card-header">
+                        <div class="stat-card-title">Total Games</div>
+                        <div class="stat-card-icon withdrawals-icon">
+                            <i class="fas fa-gamepad"></i>
+                        </div>
+                    </div>
+                    <div class="stat-card-value"><?php echo $total_games; ?></div>
+                    <div class="stat-card-desc">Active games</div>
+                </div>
+            </div>
+
+            <!-- Financial Overview -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-header">
                         <div class="stat-card-title">Total Deposits</div>
                         <div class="stat-card-icon deposits-icon">
-                            <i class="fas fa-dollar-sign"></i>
+                            <i class="fas fa-money-bill-wave"></i>
                         </div>
                     </div>
                     <div class="stat-card-value">$<?php echo number_format($total_deposits, 2); ?></div>
-                    <div class="stat-card-desc">All time</div>
+                    <div class="stat-card-desc">All time deposits</div>
                 </div>
 
                 <div class="stat-card">
                     <div class="stat-card-header">
                         <div class="stat-card-title">Total Withdrawals</div>
                         <div class="stat-card-icon withdrawals-icon">
-                            <i class="fas fa-money-check"></i>
+                            <i class="fas fa-hand-holding-usd"></i>
                         </div>
                     </div>
                     <div class="stat-card-value">$<?php echo number_format($total_withdrawals, 2); ?></div>
-                    <div class="stat-card-desc">All time</div>
+                    <div class="stat-card-desc">All time withdrawals</div>
                 </div>
-            </div>
 
-            <!-- Broker Limit Card -->
-            <?php if (!empty($broker_limit)): ?>
-            <div class="broker-limit-card">
-                <div class="section-header">
-                    <h2 class="section-title"><i class="fas fa-chart-line"></i> Broker Limits</h2>
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <div class="stat-card-title">Pending Withdrawals</div>
+                        <div class="stat-card-icon pending-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                    </div>
+                    <div class="stat-card-value">$<?php echo number_format($pending_withdrawals, 2); ?></div>
+                    <div class="stat-card-desc">Awaiting approval</div>
                 </div>
-                <div class="limit-item">
-                    <div class="limit-label">Deposit Limit</div>
-                    <div class="limit-value">$<?php echo number_format($broker_limit['deposit_limit'], 2); ?></div>
-                </div>
-                <div class="limit-item">
-                    <div class="limit-label">Withdrawal Limit</div>
-                    <div class="limit-value">$<?php echo number_format($broker_limit['withdrawal_limit'], 2); ?></div>
-                </div>
-                <div class="limit-item">
-                    <div class="limit-label">Bet Limit</div>
-                    <div class="limit-value">$<?php echo number_format($broker_limit['bet_limit'], 2); ?></div>
-                </div>
-                <?php if ($broker_limit['pnl_ratio']): ?>
-                <div class="limit-item">
-                    <div class="limit-label">P&L Ratio</div>
-                    <div class="limit-value"><?php echo $broker_limit['pnl_ratio']; ?>%</div>
-                </div>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
 
-            <!-- Stats Cards -->
-            <div class="stats-grid">
-                <!-- Your stats cards remain the same -->
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <div class="stat-card-title">Active Users</div>
+                        <div class="stat-card-icon users-icon">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                    </div>
+                    <div class="stat-card-value"><?php echo $active_users; ?></div>
+                    <div class="stat-card-desc">Last 30 days activity</div>
+                </div>
             </div>
 
             <!-- Charts Section -->
             <div class="charts-grid">
                 <div class="chart-container">
                     <div class="chart-header">
-                        <h3 class="chart-title">Revenue Overview</h3>
+                        <h3 class="chart-title">Platform Revenue Overview</h3>
                         <div class="chart-actions">
                             <button class="chart-action-btn active" data-period="week">Week</button>
                             <button class="chart-action-btn" data-period="this_month">This Month</button>
                             <button class="chart-action-btn" data-period="last_month">Last Month</button>
-                            <button class="chart-action-btn" data-period="custom">Custom</button>
                         </div>
                     </div>
-                    
-                    <!-- Custom Date Range Input -->
-                    <div class="custom-date-range" id="customDateRange">
-                        <div class="date-input-group">
-                            <label for="startDate">From</label>
-                            <input type="date" id="startDate" class="date-input" value="<?php echo date('Y-m-d', strtotime('-6 days')); ?>">
-                        </div>
-                        <div class="date-input-group">
-                            <label for="endDate">To</label>
-                            <input type="date" id="endDate" class="date-input" value="<?php echo date('Y-m-d'); ?>">
-                        </div>
-                        <button class="apply-custom-date" id="applyCustomDate">Apply</button>
-                    </div>
-                    
                     <div class="chart-wrapper">
                         <canvas id="revenueChart"></canvas>
                     </div>
@@ -1582,51 +1580,65 @@ $title = "Admin Dashboard - RB Games.";
                 
                 <div class="chart-container">
                     <div class="chart-header">
-                        <h3 class="chart-title">User Activity</h3>
+                        <h3 class="chart-title">Top Admins by Deposits</h3>
                     </div>
                     <div class="chart-wrapper">
-                        <canvas id="userActivityChart"></canvas>
+                        <canvas id="adminDistributionChart"></canvas>
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Actions -->
+            <!-- Top Performing Admins -->
             <div class="dashboard-section">
                 <div class="section-header">
-                    <h2 class="section-title"><i class="fas fa-bolt"></i> Quick Actions</h2>
+                    <h2 class="section-title"><i class="fas fa-trophy"></i> Top Performing Admins</h2>
+                    <a href="super_admin_manage_admins.php" class="view-all">View All Admins</a>
                 </div>
-                <div class="quick-actions">
-                    <a href="users.php" class="action-btn">
-                        <i class="fas fa-users"></i>
-                        <span>Manage Users</span>
-                    </a>
-                    <a href="admin_transactions.php" class="action-btn">
-                        <i class="fas fa-search-dollar"></i>
-                        <span>View Transactions</span>
-                    </a>
-                    <a href="admin_withdrawals.php" class="action-btn">
-                        <i class="fas fa-hand-holding-usd"></i>
-                        <span>Process Withdrawals</span>
-                    </a>
-                    <a href="admin_reports.php" class="action-btn">
-                        <i class="fas fa-chart-pie"></i>
-                        <span>Generate Reports</span>
-                    </a>
-                    
-                    <a href="admin_deposits.php" class="action-btn">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <span>Approve Deposits</span>
-                    </a>
+                
+                <div class="recent_data">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Admin</th>
+                                <th>Users</th>
+                                <th>New Users</th>
+                                <th>Total Deposits</th>
+                                <th>Total Withdrawals</th>
+                                <th>Total Bets</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (!empty($top_admins)): ?>
+                                <?php foreach ($top_admins as $admin): ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($admin['username']); ?></strong>
+                                            <div class="admin-badge"><?php echo ucfirst($admin['status']); ?></div>
+                                        </td>
+                                        <td><?php echo $admin['total_users']; ?></td>
+                                        <td><?php echo $admin['new_users']; ?></td>
+                                        <td>$<?php echo number_format($admin['total_deposits'], 2); ?></td>
+                                        <td>$<?php echo number_format($admin['total_withdrawals'], 2); ?></td>
+                                        <td><?php echo $admin['total_bets']; ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="6" style="text-align: center;">No admin data available</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Recent Data -->
+            <!-- Recent Activity -->
             <div class="recent-data-grid">
                 <!-- Recent Transactions -->
                 <div class="dashboard-section">
                     <div class="section-header">
                         <h2 class="section-title"><i class="fas fa-exchange-alt"></i> Recent Transactions</h2>
-                        <a href="admin_transactions.php" class="view-all">View All</a>
+                        <a href="super_admin_transactions.php" class="view-all">View All</a>
                     </div>
                     
                     <div class="recent_data">
@@ -1634,6 +1646,7 @@ $title = "Admin Dashboard - RB Games.";
                             <thead>
                                 <tr>
                                     <th>User</th>
+                                    <th>Admin</th>
                                     <th>Type</th>
                                     <th>Amount</th>
                                     <th>Status</th>
@@ -1643,7 +1656,10 @@ $title = "Admin Dashboard - RB Games.";
                                 <?php if (!empty($recent_transactions)): ?>
                                     <?php foreach ($recent_transactions as $transaction): ?>
                                         <tr>
-                                            <td><?php echo htmlspecialchars($transaction['username']); ?></td>
+                                            <td><?php echo htmlspecialchars($transaction['user_name']); ?></td>
+                                            <td>
+                                                <span class="admin-badge"><?php echo htmlspecialchars($transaction['admin_name']); ?></span>
+                                            </td>
                                             <td><?php echo ucfirst($transaction['type']); ?></td>
                                             <td>$<?php echo number_format($transaction['amount'], 2); ?></td>
                                             <td>
@@ -1655,7 +1671,7 @@ $title = "Admin Dashboard - RB Games.";
                                     <?php endforeach; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="4" style="text-align: center;">No recent transactions</td>
+                                        <td colspan="5" style="text-align: center;">No recent transactions</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -1667,7 +1683,7 @@ $title = "Admin Dashboard - RB Games.";
                 <div class="dashboard-section">
                     <div class="section-header">
                         <h2 class="section-title"><i class="fas fa-credit-card"></i> Recent Withdrawals</h2>
-                        <a href="admin_withdrawals.php" class="view-all">View All</a>
+                        <a href="super_admin_withdrawals.php" class="view-all">View All</a>
                     </div>
                     
                     <div class="recent_data">
@@ -1675,6 +1691,7 @@ $title = "Admin Dashboard - RB Games.";
                             <thead>
                                 <tr>
                                     <th>User</th>
+                                    <th>Admin</th>
                                     <th>Amount</th>
                                     <th>Status</th>
                                 </tr>
@@ -1683,7 +1700,10 @@ $title = "Admin Dashboard - RB Games.";
                                 <?php if (!empty($recent_withdrawals)): ?>
                                     <?php foreach ($recent_withdrawals as $withdrawal): ?>
                                         <tr>
-                                            <td><?php echo htmlspecialchars($withdrawal['username']); ?></td>
+                                            <td><?php echo htmlspecialchars($withdrawal['user_name']); ?></td>
+                                            <td>
+                                                <span class="admin-badge"><?php echo htmlspecialchars($withdrawal['admin_name']); ?></span>
+                                            </td>
                                             <td>$<?php echo number_format($withdrawal['amount'], 2); ?></td>
                                             <td>
                                                 <span class="status status-<?php echo $withdrawal['status']; ?>">
@@ -1694,7 +1714,7 @@ $title = "Admin Dashboard - RB Games.";
                                     <?php endforeach; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="3" style="text-align: center;">No recent withdrawals</td>
+                                        <td colspan="4" style="text-align: center;">No recent withdrawals</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -1702,342 +1722,200 @@ $title = "Admin Dashboard - RB Games.";
                     </div>
                 </div>
             </div>
+
+            <!-- Quick Actions -->
+            <div class="dashboard-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fas fa-bolt"></i> Quick Actions</h2>
+                </div>
+                <div class="quick-actions">
+                    <a href="super_admin_manage_admins.php" class="action-btn">
+                        <i class="fas fa-user-shield"></i>
+                        <span>Manage Admins</span>
+                    </a>
+                    <a href="super_admin_all_users.php" class="action-btn">
+                        <i class="fas fa-users"></i>
+                        <span>View All Users</span>
+                    </a>
+                    <a href="super_admin_transactions.php" class="action-btn">
+                        <i class="fas fa-search-dollar"></i>
+                        <span>All Transactions</span>
+                    </a>
+                    <a href="super_admin_withdrawals.php" class="action-btn">
+                        <i class="fas fa-hand-holding-usd"></i>
+                        <span>Process Withdrawals</span>
+                    </a>
+                    <a href="super_admin_reports.php" class="action-btn">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Platform Reports</span>
+                    </a>
+                    <a href="super_admin_settings.php" class="action-btn">
+                        <i class="fas fa-cog"></i>
+                        <span>Platform Settings</span>
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 
-<!-- Replace the entire JavaScript section in your dashboard.php with this: -->
+    <script>
+        // Mobile menu functionality
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-<script>
-    // Mobile menu functionality (same as before)
-    const menuToggle = document.getElementById('menuToggle');
-    const sidebar = document.getElementById('sidebar');
-    const sidebarOverlay = document.getElementById('sidebarOverlay');
-
-    menuToggle.addEventListener('click', function() {
-        sidebar.classList.toggle('active');
-        sidebarOverlay.classList.toggle('active');
-    });
-
-    sidebarOverlay.addEventListener('click', function() {
-        sidebar.classList.remove('active');
-        sidebarOverlay.classList.remove('active');
-    });
-
-    const menuItems = document.querySelectorAll('.menu-item');
-    menuItems.forEach(item => {
-        item.addEventListener('click', function() {
-            if (window.innerWidth <= 768) {
-                sidebar.classList.remove('active');
-                sidebarOverlay.classList.remove('active');
-            }
+        menuToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('active');
+            sidebarOverlay.classList.toggle('active');
         });
-    });
 
-    function handleResize() {
-        if (window.innerWidth >= 993) {
+        sidebarOverlay.addEventListener('click', function() {
             sidebar.classList.remove('active');
             sidebarOverlay.classList.remove('active');
-            menuToggle.style.display = 'none';
-        } else if (window.innerWidth >= 769) {
-            sidebar.classList.remove('active');
-            sidebarOverlay.classList.remove('active');
-            menuToggle.style.display = 'none';
-        } else {
-            menuToggle.style.display = 'block';
-        }
-    }
+        });
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-
-    // Initialize charts after DOM is loaded
-    document.addEventListener('DOMContentLoaded', function() {
-        initializeRevenueChart();
-        initializeUserActivityChart();
-        
-        // Add event listeners for chart controls
-        setupChartControls();
-    });
-
-    // Initialize Revenue Chart
-    function initializeRevenueChart() {
-        const revenueCtx = document.getElementById('revenueChart').getContext('2d');
-        revenueChart = new Chart(revenueCtx, {
-            type: 'line',
-            data: {
-                labels: <?php echo json_encode($revenue_data['dates']); ?>,
-                datasets: [
-                    {
-                        label: 'Deposits',
-                        data: <?php echo json_encode($revenue_data['deposits']); ?>,
-                        borderColor: '#00b894',
-                        backgroundColor: 'rgba(0, 184, 148, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true
-                    },
-                    {
-                        label: 'Withdrawals',
-                        data: <?php echo json_encode($revenue_data['withdrawals']); ?>,
-                        borderColor: '#d63031',
-                        backgroundColor: 'rgba(214, 48, 49, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true
-                    },
-                    {
-                        label: 'Winnings',
-                        data: <?php echo json_encode($revenue_data['winnings']); ?>,
-                        borderColor: '#fdcb6e',
-                        backgroundColor: 'rgba(253, 203, 110, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: {
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            padding: 15,
-                            usePointStyle: true
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
+        // Initialize charts
+        document.addEventListener('DOMContentLoaded', function() {
+            // Revenue Chart
+            const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+            const revenueChart = new Chart(revenueCtx, {
+                type: 'line',
+                data: {
+                    labels: <?php echo json_encode($revenue_data['dates']); ?>,
+                    datasets: [
+                        {
+                            label: 'Deposits',
+                            data: <?php echo json_encode($revenue_data['deposits']); ?>,
+                            borderColor: '#00b894',
+                            backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
                         },
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            callback: function(value) {
-                                return '$' + value;
+                        {
+                            label: 'Withdrawals',
+                            data: <?php echo json_encode($revenue_data['withdrawals']); ?>,
+                            borderColor: '#d63031',
+                            backgroundColor: 'rgba(214, 48, 49, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                color: 'rgba(255, 255, 255, 0.7)'
                             }
                         }
                     },
-                    x: {
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                callback: function(value) {
+                                    return '$' + value;
+                                }
+                            }
                         },
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)'
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
                         }
-                    }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                },
-                animations: {
-                    tension: {
-                        duration: 1000,
-                        easing: 'linear'
                     }
                 }
-            }
-        });
-    }
+            });
 
-    // Initialize User Activity Chart
-    function initializeUserActivityChart() {
-        const userActivityCtx = document.getElementById('userActivityChart').getContext('2d');
-        const userActivityChart = new Chart(userActivityCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Active Users', 'New Users', 'Returning Users'],
-                datasets: [{
-                    data: [
-                        <?php echo $user_activity_data['active']; ?>,
-                        <?php echo $user_activity_data['new']; ?>,
-                        <?php echo $user_activity_data['returning']; ?>
-                    ],
-                    backgroundColor: [
-                        '#ff3c7e',
-                        '#0fb4c9',
-                        '#00cec9'
-                    ],
-                    borderWidth: 0,
-                    hoverOffset: 15
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            padding: 15,
-                            usePointStyle: true
+            // Admin Distribution Chart
+            const adminCtx = document.getElementById('adminDistributionChart').getContext('2d');
+            const adminChart = new Chart(adminCtx, {
+                type: 'bar',
+                data: {
+                    labels: <?php echo json_encode($admin_distribution_data['admins']); ?>,
+                    datasets: [{
+                        label: 'Deposit Amount',
+                        data: <?php echo json_encode($admin_distribution_data['deposit_amounts']); ?>,
+                        backgroundColor: '#ff3c7e',
+                        borderColor: '#ff3c7e',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
                         }
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const label = context.label || '';
-                                const value = context.raw || 0;
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = Math.round((value / total) * 100);
-                                return `${label}: ${value} (${percentage}%)`;
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                callback: function(value) {
+                                    return '$' + value;
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                maxRotation: 45,
+                                minRotation: 45
                             }
                         }
                     }
-                },
-                cutout: '60%'
-            }
-        });
-    }
+                }
+            });
 
-    // Setup chart controls
-    function setupChartControls() {
-        // Chart period switching
-        document.querySelectorAll('.chart-action-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const period = this.dataset.period;
-                
-                document.querySelectorAll('.chart-action-btn').forEach(btn => {
-                    btn.classList.remove('active');
+            // Chart period switching
+            document.querySelectorAll('.chart-action-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const period = this.dataset.period;
+                    
+                    document.querySelectorAll('.chart-action-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // In a real implementation, you would fetch new data for the selected period
+                    console.log('Switching to period:', period);
                 });
-                this.classList.add('active');
-                
-                // Show/hide custom date range
-                const customDateRange = document.getElementById('customDateRange');
-                if (period === 'custom') {
-                    customDateRange.classList.add('active');
-                } else {
-                    customDateRange.classList.remove('active');
-                    updateChartData(period);
-                }
-                
-                currentPeriod = period;
             });
         });
 
-        // Apply custom date range
-        document.getElementById('applyCustomDate').addEventListener('click', function() {
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            
-            if (!startDate || !endDate) {
-                alert('Please select both start and end dates');
-                return;
+        // Update time every minute
+        function updateTime() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const timeElement = document.querySelector('.current-time span');
+            if (timeElement) {
+                timeElement.textContent = now.toLocaleDateString('en-US', options);
             }
-            
-            if (new Date(startDate) > new Date(endDate)) {
-                alert('Start date cannot be after end date');
-                return;
-            }
-            
-            updateChartData('custom', startDate, endDate);
-        });
-    }
-
-    // Update chart data via AJAX
-    function updateChartData(period, startDate = '', endDate = '') {
-        console.log('Updating chart data for period:', period, 'Start:', startDate, 'End:', endDate);
-        
-        // Show loading state
-        const chartTitle = document.querySelector('.chart-container .chart-title');
-        const originalTitle = chartTitle.textContent;
-        chartTitle.textContent = 'Loading...';
-        
-        // Create request data
-        const requestData = {
-            period: period,
-            referral_code: '<?php echo $referral_code; ?>'
-        };
-        
-        if (period === 'custom' && startDate && endDate) {
-            requestData.start_date = startDate;
-            requestData.end_date = endDate;
         }
         
-        console.log('Sending request data:', requestData);
-        
-        // Send AJAX request
-        fetch('get_chart_data.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams(requestData)
-        })
-        .then(response => {
-            console.log('Response status:', response.status);
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Received data:', data);
-            if (data.success) {
-                // Update chart data
-                revenueChart.data.labels = data.dates;
-                revenueChart.data.datasets[0].data = data.deposits;
-                revenueChart.data.datasets[1].data = data.withdrawals;
-                revenueChart.data.datasets[2].data = data.winnings;
-                revenueChart.update('none'); // Use 'none' to prevent animation issues
-                
-                // Update chart title with period info
-                let periodText = '';
-                switch(period) {
-                    case 'week':
-                        periodText = ' (Last 7 Days)';
-                        break;
-                    case 'this_month':
-                        periodText = ' (This Month)';
-                        break;
-                    case 'last_month':
-                        periodText = ' (Last Month)';
-                        break;
-                    case 'custom':
-                        periodText = ` (${formatDate(data.start_date)} to ${formatDate(data.end_date)})`;
-                        break;
-                }
-                chartTitle.textContent = 'Revenue Overview' + periodText;
-                
-                console.log('Chart updated successfully');
-            } else {
-                throw new Error(data.message || 'Unknown error');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error loading chart data: ' + error.message);
-            chartTitle.textContent = originalTitle;
-        });
-    }
-
-    // Format date for display
-    function formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    // Update time every minute
-    function updateTime() {
-        const now = new Date();
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const timeElement = document.querySelector('.current-time span');
-        if (timeElement) {
-            timeElement.textContent = now.toLocaleDateString('en-US', options);
-        }
-    }
-    
-    // Initial call
-    updateTime();
-    
-    // Update every minute
-    setInterval(updateTime, 60000);
-</script>
+        updateTime();
+        setInterval(updateTime, 60000);
+    </script>
 </body>
 </html>
