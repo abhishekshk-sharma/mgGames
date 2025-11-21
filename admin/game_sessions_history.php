@@ -30,7 +30,7 @@ $limit_result = $limit_stmt->get_result();
 $admin_limits = $limit_result->fetch_assoc();
 
 $bet_limit = $admin_limits['bet_limit'] ?? 100;
-$pnl_ratio = $admin_limits['pnl_ratio'];
+$pnl_ratio = $admin_limits['pnl_ratio'] ?? null;
 
 // Parse PNL ratio if set
 $admin_ratio = 0;
@@ -1562,6 +1562,10 @@ if ($games_result && $games_result->num_rows > 0) {
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -2026,5 +2030,7 @@ if ($games_result && $games_result->num_rows > 0) {
         updateDateInputs();
         dateFilter.addEventListener('change', updateDateInputs);
     </script>
+
+
 </body>
 </html>

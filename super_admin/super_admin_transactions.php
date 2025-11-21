@@ -1,5 +1,5 @@
 <?php
-// admin_transactions.php
+// super_admin_transactions.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -7,100 +7,93 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as admin
-if (!isset($_SESSION['admin_id'])) {
-    header("location: login.php");
+// Redirect if not logged in as super admin
+if (!isset($_SESSION['super_admin_id'])) {
+    header("location: super_admin_login.php");
     exit;
 }
 
-// Get admin details
-$admin_id = $_SESSION['admin_id'];
-$admin_username = $_SESSION['admin_username'];
+// Get super admin details
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
 // Pagination setup
 $limit = 20; // Number of records per page
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_code  = $stmt->get_result();
-$referral_code = $referral_code->fetch_assoc();
+// Initialize variables for filtering and searching
+$filter_type = isset($_GET['filter_type']) ? $_GET['filter_type'] : '';
+$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
+$search_admin = isset($_GET['search_admin']) ? trim($_GET['search_admin']) : '';
+
+// Base query for transactions with admin info
+$where_conditions = [];
+$params = [];
+$types = '';
+
+// Build query conditions
+if ($search_admin) {
+    // Search by admin username or ID
+    $where_conditions[] = "(a.username LIKE ? OR a.id = ?)";
+    $params[] = "%$search_admin%";
+    $params[] = $search_admin;
+    $types .= 'ss';
+}
+
+if ($filter_type) {
+    $where_conditions[] = "t.type = ?";
+    $params[] = $filter_type;
+    $types .= 's';
+}
+
+if ($filter_status) {
+    $where_conditions[] = "t.status = ?";
+    $params[] = $filter_status;
+    $types .= 's';
+}
+
+// Build WHERE clause
+$where_clause = '';
+if (!empty($where_conditions)) {
+    $where_clause = "WHERE " . implode(" AND ", $where_conditions);
+}
 
 // Get total count of transactions
-$sql_count = "SELECT COUNT(u.id) as total FROM transactions t JOIN users u ON u.id = t.user_id WHERE u.referral_code = '".$referral_code['referral_code']."'";
-$result_count = $conn->query($sql_count);
-$total_records = $result_count->fetch_assoc()['total'];
-$total_pages = ceil($total_records / $limit);
+$sql_count = "SELECT COUNT(t.id) as total 
+              FROM transactions t 
+              JOIN users u ON t.user_id = u.id 
+              JOIN admins a ON u.referral_code = a.referral_code 
+              $where_clause";
+$stmt_count = $conn->prepare($sql_count);
+if ($stmt_count) {
+    if (!empty($params)) {
+        $stmt_count->bind_param($types, ...$params);
+    }
+    $stmt_count->execute();
+    $result_count = $stmt_count->get_result();
+    $total_records = $result_count->fetch_assoc()['total'];
+    $total_pages = ceil($total_records / $limit);
+}
 
 // Get transactions with pagination
 $transactions = [];
-$sql = "SELECT t.*, u.username 
+$sql = "SELECT t.*, u.username as user_username, a.username as admin_username, a.id as admin_id
         FROM transactions t 
         JOIN users u ON t.user_id = u.id 
-        WHERE u.referral_code = '".$referral_code['referral_code']."'
+        JOIN admins a ON u.referral_code = a.referral_code 
+        $where_clause
         ORDER BY t.created_at DESC 
         LIMIT $limit OFFSET $offset";
-$result = $conn->query($sql);
-if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $transactions[] = $row;
-    }
-}
 
-// Filter functionality
-$filter_type = isset($_GET['filter_type']) ? $_GET['filter_type'] : '';
-$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
-
-if ($filter_type || $filter_status) {
-    $where_conditions = [];
-    $params = [];
-    
-    if ($filter_type) {
-        $where_conditions[] = "t.type = ?";
-        $params[] = $filter_type;
+$stmt = $conn->prepare($sql);
+if ($stmt) {
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
     }
-    
-    if ($filter_status) {
-        $where_conditions[] = "t.status = ?";
-        $params[] = $filter_status;
-    }
-    
-    $where_clause = "WHERE " . implode(" AND ", $where_conditions);
-    
-    // Update count with filters
-    $sql_count = "SELECT COUNT(u.id) as total FROM transactions t
-    JOIN users u ON t.user_id = u.id 
-    $where_clause AND u.referral_code = '".$referral_code['referral_code']."'";
-    $stmt_count = $conn->prepare($sql_count);
-    if ($stmt_count) {
-        if ($params) {
-            $types = str_repeat('s', count($params));
-            $stmt_count->bind_param($types, ...$params);
-        }
-        $stmt_count->execute();
-        $result_count = $stmt_count->get_result();
-        $total_records = $result_count->fetch_assoc()['total'];
-        $total_pages = ceil($total_records / $limit);
-    }
-    
-    // Update transactions query with filters
-    $sql = "SELECT t.*, u.username 
-            FROM transactions t 
-            JOIN users u ON t.user_id = u.id 
-            $where_clause AND u.referral_code = '".$referral_code['referral_code']."'
-            ORDER BY t.created_at DESC 
-            LIMIT $limit OFFSET $offset";
-    
-    $stmt = $conn->prepare($sql);
-    if ($stmt) {
-        if ($params) {
-            $types = str_repeat('s', count($params));
-            $stmt->bind_param($types, ...$params);
-        }
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $transactions = [];
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             $transactions[] = $row;
         }
@@ -112,7 +105,7 @@ if ($filter_type || $filter_status) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transactions - RB Games Admin</title>
+    <title>Transactions - Super Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -480,7 +473,6 @@ if ($filter_type || $filter_status) {
     .form-control option{
         background: var(--card-bg);
         border: 1px solid var(--border-color);
-        /* border-radius: 6px; */
         color: var(--text-light);
     }
 
@@ -686,8 +678,6 @@ if ($filter_type || $filter_status) {
             font-size: 1.2rem;
         }
         
-        
-        
         .menu-item {
             justify-content: center;
             padding: 1rem;
@@ -717,8 +707,6 @@ if ($filter_type || $filter_status) {
             width: 100%;
             justify-content: space-between;
         }
-        
-        
     }
 
     @media (max-width: 992px) and (min-width: 769px){
@@ -1028,6 +1016,17 @@ if ($filter_type || $filter_status) {
         border: 1px solid rgba(214, 48, 49, 0.3);
         color: var(--danger);
     }
+
+    .admin-info {
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-block;
+            background: rgba(255, 60, 126, 0.2);
+            color: var(--primary);
+            border: 1px solid rgba(255, 60, 126, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -1047,54 +1046,62 @@ if ($filter_type || $filter_status) {
                 <h2>RB Games</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
+                <a href="super_admin_dashboard.php" class="menu-item ">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="users.php" class="menu-item">
+                <a href="super_admin_manage_admins.php" class="menu-item ">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="super_admin_all_users.php" class="menu-item">
                     <i class="fas fa-users"></i>
-                    <span>Users</span>
+                    <span>All Users</span>
                 </a>
-                <a href="todays_active_games.php" class="menu-item">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
+                <a href="super_admin_transactions.php" class="menu-item active">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>All Transactions</span>
                 </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item active">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
+                <a href="super_admin_withdrawals.php" class="menu-item">
                     <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
+                    <span>All Withdrawals</span>
                 </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
+                <a href="super_admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>All Deposits</span>
                 </a>
-                <a href="applications.php" class="menu-item">
+                <a href="admin_games.php" class="menu-item">
+                    <i class="fa-regular fa-pen-to-square"></i>
+                    <span>Edit Games</span>
+                </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
                     <i class="fas fa-tasks"></i>
-                    <span>Applications</span>
+                    <span>All Applications</span>
                 </a>
-                <a href="admin_reports.php" class="menu-item">
+                <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
+                    <span>Platform Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="profit_loss.php" class="menu-item ">
+                    <i class="fa-solid fa-sack-dollar"></i>
+                    <span>Profit & Loss</span>
+                </a>
+                <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
+                </a>
+                <a href="super_admin_settings.php" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -1104,14 +1111,20 @@ if ($filter_type || $filter_status) {
             <div class="header">
                 <div class="welcome">
                     <h1>Transactions</h1>
-                    <p>View and manage all user transactions</p>
+                    <p>View and manage all user transactions across all admins</p>
                 </div>
                 <div class="header-actions">
+                    <div class="current-time">
+                        <i class="fas fa-clock"></i>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
+                    </div>
+                    
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span><?php echo $admin_username; ?></span>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
                     </div>
-                    <a href="admin_logout.php" class="logout-btn">
+                    
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -1125,6 +1138,10 @@ if ($filter_type || $filter_status) {
                 </div>
                 <form method="GET" class="filter-form">
                     <div class="form-group">
+                        <label class="form-label">Search Admin</label>
+                        <input type="text" name="search_admin" class="form-control" placeholder="Admin username or ID" value="<?php echo htmlspecialchars($search_admin); ?>">
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">Transaction Type</label>
                         <select name="filter_type" class="form-control">
                             <option value="">All Types</option>
@@ -1134,6 +1151,7 @@ if ($filter_type || $filter_status) {
                             <option value="winning" <?php echo $filter_type == 'winning' ? 'selected' : ''; ?>>Winning</option>
                             <option value="bonus" <?php echo $filter_type == 'bonus' ? 'selected' : ''; ?>>Bonus</option>
                             <option value="refund" <?php echo $filter_type == 'refund' ? 'selected' : ''; ?>>Refund</option>
+                            <option value="adjustment" <?php echo $filter_type == 'adjustment' ? 'selected' : ''; ?>>Adjustment</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1144,13 +1162,14 @@ if ($filter_type || $filter_status) {
                             <option value="completed" <?php echo $filter_status == 'completed' ? 'selected' : ''; ?>>Completed</option>
                             <option value="failed" <?php echo $filter_status == 'failed' ? 'selected' : ''; ?>>Failed</option>
                             <option value="cancelled" <?php echo $filter_status == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                            <option value="rejected" <?php echo $filter_status == 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                         </select>
                     </div>
                     <div class="form-group" style="align-self: flex-end;">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-search"></i> Apply Filters
                         </button>
-                        <a href="admin_transactions.php" class="btn btn-secondary">
+                        <a href="super_admin_transactions.php" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Clear
                         </a>
                     </div>
@@ -1172,6 +1191,7 @@ if ($filter_type || $filter_status) {
                                 <tr>
                                     <th>ID</th>
                                     <th>User</th>
+                                    <th>Admin</th>
                                     <th>Type</th>
                                     <th>Amount</th>
                                     <th>Balance Before</th>
@@ -1184,7 +1204,8 @@ if ($filter_type || $filter_status) {
                                 <?php foreach ($transactions as $transaction): ?>
                                     <tr>
                                         <td><?php echo $transaction['id']; ?></td>
-                                        <td><?php echo $transaction['username']; ?></td>
+                                        <td><?php echo $transaction['user_username']; ?></td>
+                                        <td><?php echo $transaction['admin_username'] . ' (ID: ' . $transaction['admin_id'] . ')'; ?></td>
                                         <td><?php echo ucfirst($transaction['type']); ?></td>
                                         <td>$<?php echo number_format($transaction['amount'], 2); ?></td>
                                         <td>$<?php echo number_format($transaction['balance_before'], 2); ?></td>
@@ -1211,7 +1232,11 @@ if ($filter_type || $filter_status) {
                                 </div>
                                 <div class="transaction-row">
                                     <span class="transaction-label">User:</span>
-                                    <span class="transaction-value"><?php echo $transaction['username']; ?></span>
+                                    <span class="transaction-value"><?php echo $transaction['user_username']; ?></span>
+                                </div>
+                                <div class="transaction-row">
+                                    <span class="transaction-label">Admin:</span>
+                                    <span class="transaction-value"><?php echo $transaction['admin_username'] . ' (ID: ' . $transaction['admin_id'] . ')'; ?></span>
                                 </div>
                                 <div class="transaction-row">
                                     <span class="transaction-label">Type:</span>
@@ -1254,10 +1279,10 @@ if ($filter_type || $filter_status) {
                 <?php if ($total_pages > 1): ?>
                     <div class="pagination">
                         <?php if ($page > 1): ?>
-                            <a href="?page=1<?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=1<?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
                                 <i class="fas fa-angle-double-left"></i>
                             </a>
-                            <a href="?page=<?php echo $page - 1; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $page - 1; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
                                 <i class="fas fa-angle-left"></i>
                             </a>
                         <?php else: ?>
@@ -1272,17 +1297,17 @@ if ($filter_type || $filter_status) {
                         
                         for ($i = $start_page; $i <= $end_page; $i++):
                         ?>
-                            <a href="?page=<?php echo $i; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>" 
+                            <a href="?page=<?php echo $i; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>" 
                                class="<?php echo $i == $page ? 'current' : ''; ?>">
                                 <?php echo $i; ?>
                             </a>
                         <?php endfor; ?>
                         
                         <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo $page + 1; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $page + 1; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
                                 <i class="fas fa-angle-right"></i>
                             </a>
-                            <a href="?page=<?php echo $total_pages; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $total_pages; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
                                 <i class="fas fa-angle-double-right"></i>
                             </a>
                         <?php else: ?>
@@ -1400,7 +1425,5 @@ if ($filter_type || $filter_status) {
         // Update every minute
         setInterval(updateTime, 60000);
     </script>
-
-
 </body>
 </html>

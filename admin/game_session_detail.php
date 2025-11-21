@@ -714,6 +714,98 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
             min-height: 100vh;
         }
 
+
+        /* Sidebar Styles */
+            .sidebar {
+                width: 260px;
+                background: var(--dark);
+                box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
+                z-index: 1000;
+                display: flex;
+                flex-direction: column;
+                position: fixed;
+                height: 100vh;
+                transition: all 0.3s ease;
+                overflow-y: auto;
+                left: 0;
+                top: 0;
+            }
+
+            .sidebar::-webkit-scrollbar{
+                display:none;
+            }
+            .sidebar.active {
+                left: 0;
+            }
+
+            .sidebar-header {
+                padding: 1.8rem 1.5rem;
+                background: linear-gradient(to right, var(--primary), var(--secondary));
+                text-align: center;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .sidebar-header h2 {
+                font-size: 1.6rem;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+
+            .sidebar-menu {
+                padding: 1.5rem 0;
+                flex-grow: 1;
+            }
+
+            .menu-item {
+                padding: 1rem 1.8rem;
+                display: flex;
+                align-items: center;
+                color: var(--text-light);
+                text-decoration: none;
+                transition: all 0.3s ease;
+                margin: 0.3rem 0.8rem;
+                border-radius: 8px;
+            }
+
+            .menu-item:hover, .menu-item.active {
+                background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
+                border-left: 4px solid var(--primary);
+                transform: translateX(5px);
+            }
+
+            .menu-item i {
+                margin-right: 12px;
+                font-size: 1.3rem;
+                width: 24px;
+                text-align: center;
+            }
+
+            .sidebar-footer {
+                padding: 1.2rem;
+                border-top: 1px solid var(--border-color);
+                text-align: center;
+                background: rgba(0, 0, 0, 0.2);
+            }
+
+            /* Mobile menu toggle */
+            .menu-toggle {
+                display: none;
+                background: none;
+                border: none;
+                color: var(--text-light);
+                font-size: 1.5rem;
+                cursor: pointer;
+                padding: 0.5rem;
+                z-index: 1001;
+                position: fixed;
+                top: 1rem;
+                left: 1rem;
+                background: var(--card-bg);
+                border-radius: 6px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            }
+
+
         .main-content {
             flex: 1;
             padding: 2.2rem;
@@ -1632,15 +1724,262 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
             font-weight: 500;
             display: inline-block;
         }
+    
+        .game-type-numbers {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .game-type-numbers:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 60, 126, 0.3);
+        }
+
+        .game-type-numbers h4 {
+            color: var(--secondary);
+            font-size: 1.1rem;
+        }
+
+        .game-type-numbers .numbers-grid {
+            margin-top: 0.8rem;
+        }
+
+        .game-type-numbers .number-item {
+            padding: 0.6rem;
+            font-size: 0.9rem;
+        }
+
+        .game-type-numbers .number-value {
+            font-size: 1rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .game-type-numbers .number-amount {
+            font-size: 0.75rem;
+        }
+
+        /* Overlay for mobile */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-width: 993px) {
+                .sidebar {
+                    width: 260px;
+                    left: 0;
+                    position: fixed;
+                }
+                
+                .sidebar-header h2 {
+                    font-size: 1.2rem;
+                }
+
+                .menu-item span {
+                    display: none;
+                }
+
+                .menu-item {
+                    justify-content: center;
+                    padding: 1rem;
+                }
+                
+                .menu-item i {
+                    margin-right: 0;
+                }
+                
+                .sidebar-footer {
+                    padding: 0.8rem;
+                }
+                
+                .main-content {
+                    margin-left: 80px;
+                    padding: 1.5rem;
+                }
+                
+                .stats-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+                
+                .header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 1.2rem;
+                }
+                
+                .header-actions {
+                    width: 100%;
+                    justify-content: space-between;
+                }
+                
+                .menu-toggle {
+                    display: block;
+                }
+            }
+
+            /* Medium screens (769px - 992px) */
+            @media (max-width: 992px) and (min-width: 769px) {
+                .sidebar {
+                    width: 80px;
+                    left: 0;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .sidebar {
+                    width: 260px;
+                    left: -260px;
+                }
+                .sidebar.active {
+                    left: 0;
+                }
+                .stats-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .header-actions {
+                    flex-direction: column;
+                    gap: 1rem;
+                }
+                
+                .admin-badge, .current-time {
+                    width: 100%;
+                    justify-content: center;
+                }
+                
+                .main-content {
+                    padding: 1rem;
+                }
+                
+                .quick-actions {
+                    grid-template-columns: 1fr;
+                }
+                
+                .data-table {
+                    display: block;
+                    overflow-x: auto;
+                }
+            }
+
+            @media (max-width: 576px) {
+                .sidebar {
+                    width: 0;
+                    transform: translateX(-100%);
+                }
+                
+                .sidebar.active {
+                    width: 260px;
+                    transform: translateX(0);
+                }
+                
+                .main-content {
+                    margin-left: 0;
+                    padding: 1rem;
+                }
+                
+                .menu-toggle {
+                    display: block;
+                }
+                
+                .header {
+                    margin-top: 3rem;
+                }
+                
+                .welcome h1 {
+                    font-size: 1.5rem;
+                }
+                
+                .stat-card-value {
+                    font-size: 2rem;
+                }
+                
+                .dashboard-section {
+                    padding: 1rem;
+                }
+                
+                .data-table th, .data-table td {
+                    padding: 0.8rem;
+                }
+            }
 
 </style>
 
 </head>
 <body>
     <div class="admin-container">
+        <!-- Mobile Menu Toggle -->
+        <button class="menu-toggle" id="menuToggle">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <!-- Overlay for mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
         <!-- Sidebar -->
-        <div class="sidebar">
-            <!-- Same sidebar content -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>RB Games</h2>
+            </div>
+            <div class="sidebar-menu">
+                <a href="dashboard.php" class="menu-item ">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="users.php" class="menu-item">
+                    <i class="fas fa-users"></i>
+                    <span>Users</span>
+                </a>
+                <a href="todays_active_games.php" class="menu-item">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Today's Games</span>
+                </a>
+                <a href="game_sessions_history.php" class="menu-item">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Game Sessions History</span>
+                </a>
+                <a href="all_users_history.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>All Users Bet History</span>
+                </a>
+                <a href="admin_transactions.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Transactions</span>
+                </a>
+                <a href="admin_withdrawals.php" class="menu-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Withdrawals</span>
+                </a>
+                <a href="admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill"></i>
+                    <span>Deposits</span>
+                </a>
+                <a href="admin_reports.php" class="menu-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reports</span>
+                </a>
+                <a href="admin_profile.php" class="menu-item ">
+                    <i class="fas fa-user"></i>
+                    <span>Profile</span>
+                </a>
+            </div>
+            <div class="sidebar-footer">
+                <div class="admin-info">
+                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                </div>
+            </div>
         </div>
 
         <!-- Main Content -->
@@ -1927,62 +2266,160 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
                 </div>
             </div>
 
-            <!-- Most Frequent Numbers -->
-            <?php if (!empty($most_frequent_numbers)): ?>
-            <div class="dashboard-section">
-                <h2 class="section-title"><i class="fas fa-sort-amount-down"></i> Most Played Numbers</h2>
-                <div class="numbers-grid">
-                    <?php foreach ($most_frequent_numbers as $number => $amount): ?>
-                        <?php 
-                        $is_over_limit = !$pnl_ratio && isset($forwarded_amounts[$number]);
-                        $original_amount = $is_over_limit ? ($amount + $forwarded_amounts[$number]) : $amount;
-                        ?>
-                        <div class="number-item <?php echo $is_over_limit ? 'over-limit' : ''; ?>">
-                            <div class="number-value"><?php echo htmlspecialchars($number); ?></div>
-                            <div class="number-amount">
-                                ₹<?php echo number_format($amount, 2); ?>
-                                <?php if ($is_over_limit): ?>
-                                    <br><small style="color: #ffc107;">(of ₹<?php echo number_format($original_amount, 2); ?>)</small>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+<!-- Most Frequent Numbers by Game Type -->
+<?php if (!empty($number_amounts)): ?>
+<div class="dashboard-section">
+    <h2 class="section-title"><i class="fas fa-sort-amount-down"></i> Most Played Numbers by Game Type</h2>
+    
+    <?php
+    // Group numbers by game type
+    $numbers_by_game_type = [];
+    
+    foreach ($bets_for_stats as $bet) {
+        $game_type = $bet['game_type'];
+        $numbers = json_decode($bet['numbers_played'], true);
+        
+        if (is_array($numbers)) {
+            if (isset($numbers['selected_digits'])) {
+                // For SP Motor
+                $digits = $numbers['selected_digits'];
+                $amount_per_pana = $numbers['amount_per_pana'] ?? 0;
                 
-                <?php if (!empty($forwarded_amounts)): ?>
-                    <div class="forward-badge">
-                        <i class="fas fa-share-alt"></i>
-                        <strong>Forwarded Amounts:</strong> 
-                        <?php 
-                        $forwarded_details = [];
-                        foreach ($forwarded_amounts as $number => $amount) {
-                            if ($amount > 0) {
-                                $forwarded_details[] = $number . ': ₹' . number_format($amount, 2);
-                            }
+                if (!isset($numbers_by_game_type[$game_type][$digits])) {
+                    $numbers_by_game_type[$game_type][$digits] = 0;
+                }
+                $numbers_by_game_type[$game_type][$digits] += $amount_per_pana * count($numbers['pana_combinations'] ?? []);
+                
+                if (isset($numbers['pana_combinations'])) {
+                    foreach ($numbers['pana_combinations'] as $pana) {
+                        if (!isset($numbers_by_game_type[$game_type][$pana])) {
+                            $numbers_by_game_type[$game_type][$pana] = 0;
                         }
-                        echo implode(' | ', $forwarded_details);
-                        ?>
+                        $numbers_by_game_type[$game_type][$pana] += $amount_per_pana;
+                    }
+                }
+            } else {
+                // For single number bets
+                foreach ($numbers as $number => $amount) {
+                    if (!isset($numbers_by_game_type[$game_type][$number])) {
+                        $numbers_by_game_type[$game_type][$number] = 0;
+                    }
+                    $numbers_by_game_type[$game_type][$number] += $amount;
+                }
+            }
+        }
+    }
+    
+    // Apply PNL ratio or bet limit for display
+    $display_numbers_by_game_type = [];
+    foreach ($numbers_by_game_type as $game_type => $numbers) {
+        $display_numbers_by_game_type[$game_type] = [];
+        
+        foreach ($numbers as $number => $amount) {
+            if ($pnl_ratio) {
+                // For PNL ratio, show the full amount but indicate sharing
+                $display_numbers_by_game_type[$game_type][$number] = $amount;
+            } else {
+                // For bet limit, show min(amount, bet_limit)
+                $display_numbers_by_game_type[$game_type][$number] = min($amount, $bet_limit);
+            }
+        }
+        
+        // Sort by amount descending and take top 10
+        arsort($display_numbers_by_game_type[$game_type]);
+        $display_numbers_by_game_type[$game_type] = array_slice($display_numbers_by_game_type[$game_type], 0, 10, true);
+    }
+    ?>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 1.5rem;">
+        <?php foreach ($display_numbers_by_game_type as $game_type => $numbers): ?>
+            <?php if (!empty($numbers)): ?>
+                <div class="game-type-numbers">
+                    <h4 style="margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                        <i class="fas fa-dice"></i> 
+                        <?php echo ucfirst(str_replace('_', ' ', $game_type)); ?>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">
+                            (<?php echo count($numbers); ?> numbers)
+                        </span>
+                    </h4>
+                    
+                    <div class="numbers-grid" style="grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 0.6rem;">
+                        <?php foreach ($numbers as $number => $amount): ?>
+                            <?php 
+                            $is_over_limit = !$pnl_ratio && isset($forwarded_amounts[$number]);
+                            $original_amount = $is_over_limit ? ($amount + $forwarded_amounts[$number]) : $amount;
+                            ?>
+                            <div class="number-item <?php echo $is_over_limit ? 'over-limit' : ''; ?>">
+                                <div class="number-value"><?php echo htmlspecialchars($number); ?></div>
+                                <div class="number-amount" style="font-size: 0.8rem;">
+                                    ₹<?php echo number_format($amount, 2); ?>
+                                    <?php if ($is_over_limit): ?>
+                                        <br><small style="color: #ffc107; font-size: 0.7rem;">
+                                            (of ₹<?php echo number_format($original_amount, 2); ?>)
+                                        </small>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
-                <?php endif; ?>
-                
-                <?php if ($pnl_ratio): ?>
-                    <div class="forward-badge">
-                        <i class="fas fa-handshake"></i>
-                        <strong>PNL Sharing Active:</strong> 
-                        Your Share: <?php echo $admin_ratio; ?>% | 
-                        Forwarded Share: <?php echo $forward_ratio; ?>% |
-                        Forwarded Amount: ₹<?php echo number_format($forwarded_total, 2); ?>
-                    </div>
-                    <?php else: ?>
-                    <div class="forward-badge">
-                        <i class="fas fa-share-alt"></i>
-                        <strong>Bet Limit Active:</strong> 
-                        Limit: ₹<?php echo number_format($bet_limit); ?> per number |
-                        Forwarded Amount: ₹<?php echo number_format($forwarded_total, 2); ?>
-                    </div>
-                <?php endif; ?>
-            </div>  
+                    
+                    <?php 
+                    // Calculate forwarded amounts for this game type
+                    $game_type_forwarded = [];
+                    foreach ($forwarded_amounts as $number => $amount) {
+                        if ($amount > 0 && isset($numbers_by_game_type[$game_type][$number])) {
+                            $game_type_forwarded[] = $number . ': ₹' . number_format($amount, 2);
+                        }
+                    }
+                    ?>
+                    
+                    <?php if (!empty($game_type_forwarded)): ?>
+                        <div class="forward-badge" style="margin-top: 1rem; padding: 0.7rem; font-size: 0.85rem;">
+                            <i class="fas fa-share-alt"></i>
+                            <strong>Forwarded:</strong> 
+                            <?php echo implode(' | ', $game_type_forwarded); ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
+        <?php endforeach; ?>
+    </div>
+    
+    <!-- Global Forwarding Information -->
+    <?php if (!empty($forwarded_amounts)): ?>
+        <div class="forward-badge" style="margin-top: 1.5rem;">
+            <i class="fas fa-share-alt"></i>
+            <strong>Total Forwarded Amounts:</strong> 
+            <?php 
+            $forwarded_details = [];
+            foreach ($forwarded_amounts as $number => $amount) {
+                if ($amount > 0) {
+                    $forwarded_details[] = $number . ': ₹' . number_format($amount, 2);
+                }
+            }
+            echo implode(' | ', $forwarded_details);
+            ?>
+        </div>
+    <?php endif; ?>
+    
+    <?php if ($pnl_ratio): ?>
+        <div class="forward-badge" style="margin-top: 1rem;">
+            <i class="fas fa-handshake"></i>
+            <strong>PNL Sharing Active:</strong> 
+            Your Share: <?php echo $admin_ratio; ?>% | 
+            Forwarded Share: <?php echo $forward_ratio; ?>% |
+            Total Forwarded: ₹<?php echo number_format($forwarded_total, 2); ?>
+        </div>
+    <?php else: ?>
+        <div class="forward-badge" style="margin-top: 1rem;">
+            <i class="fas fa-share-alt"></i>
+            <strong>Bet Limit Active:</strong> 
+            Limit: ₹<?php echo number_format($bet_limit); ?> per number |
+            Total Forwarded: ₹<?php echo number_format($forwarded_total, 2); ?>
+        </div>
+    <?php endif; ?>
+</div>  
+<?php endif; ?>
 
             <!-- Top Users -->
             <?php if (!empty($top_users)): ?>
@@ -2570,6 +3007,50 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
     <?php endif; ?>
 
     <script>
+
+        // Mobile menu functionality (same as before)
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    menuToggle.addEventListener('click', function() {
+        sidebar.classList.toggle('active');
+        sidebarOverlay.classList.toggle('active');
+    });
+
+    sidebarOverlay.addEventListener('click', function() {
+        sidebar.classList.remove('active');
+        sidebarOverlay.classList.remove('active');
+    });
+
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+        item.addEventListener('click', function() {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('active');
+                sidebarOverlay.classList.remove('active');
+            }
+        });
+    });
+
+    function handleResize() {
+        if (window.innerWidth >= 993) {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+            menuToggle.style.display = 'none';
+        } else if (window.innerWidth >= 769) {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+            menuToggle.style.display = 'none';
+        } else {
+            menuToggle.style.display = 'block';
+        }
+    }
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+
         function updateRecordsPerPage(records) {
             const url = new URL(window.location.href);
             url.searchParams.set('records', records);

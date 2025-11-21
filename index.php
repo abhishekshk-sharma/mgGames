@@ -81,7 +81,7 @@ function isGamePlayable($open_time, $close_time) {
 
 // Fetch all games with proper time format, status, and images
 $games_data = [];
-$sql_games = "SELECT id, name, open_time, close_time, description, dynamic_images FROM games WHERE status = 'active'";
+$sql_games = "SELECT * FROM games WHERE status = 'active'";
 if ($result = $conn->query($sql_games)) {
     while ($row = $result->fetch_assoc()) {
         $game_status = getGameStatus($row['open_time'], $row['close_time']);
@@ -96,6 +96,7 @@ if ($result = $conn->query($sql_games)) {
             'status' => $game_status['status'],
             'statusText' => $game_status['text'],
             'statusClass' => $game_status['class'],
+            'image' => $row['dynamic_images'],
             'isPlayable' => isGamePlayable($row['open_time'], $row['close_time'])
         ];
     }
@@ -2908,12 +2909,7 @@ footer::before {
                 "void(0)";
         ?>
         <div class="satta-card" onclick="<?php echo $onclick; ?>" style="<?php echo $is_closed ? 'opacity: 0.7; cursor: not-allowed;' : ''; ?>">
-            <!-- Updated image section -->
-            <div class="satta-img" style="background-image: url('<?php echo $game_info['image']; ?>');">
-                <?php if (!file_exists($game_info['image']) || $game_info['image'] === 'uploads/imgs/default-game.jpg'): ?>
-                    <div class="game-icon">🎮</div>
-                <?php endif; ?>
-            </div>
+            <div class="satta-img" style="background-image: url('<?php echo $game_info['image']; ?>');"></div>
             <div class="satta-header">
                 <h3 class="satta-title"><?php echo $game_name; ?></h3>
                 <div class="satta-result">

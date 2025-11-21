@@ -1,6 +1,5 @@
-
 <?php
-// admin_deposits.php
+// super_admin_deposits.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -8,15 +7,15 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as admin
-if (!isset($_SESSION['admin_id'])) {
-    header("location: login.php");
+// Redirect if not logged in as super admin
+if (!isset($_SESSION['super_admin_id'])) {
+    header("location: super_admin_login.php");
     exit;
 }
 
-// Get admin details
-$admin_id = $_SESSION['admin_id'];
-$admin_username = $_SESSION['admin_username'];
+// Get super admin details
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
 // Handle deposit actions
 $message = '';
@@ -30,15 +29,15 @@ if (isset($_POST['approve_deposit'])) {
     $conn->begin_transaction();
     
     try {
-
-        
-
         // Get deposit details
-        $sql = "SELECT d.*, u.balance as user_balance 
+        $sql = "SELECT d.*, u.balance as user_balance, u.id as user_id
                 FROM deposits d 
                 JOIN users u ON d.user_id = u.id
-                WHERE d.id = $deposit_id ";
-        $result = $conn->query($sql);
+                WHERE d.id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $deposit_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
         if ($result && $result->num_rows > 0) {
             $deposit = $result->fetch_assoc();
@@ -48,25 +47,22 @@ if (isset($_POST['approve_deposit'])) {
             $new_balance = $current_balance + $amount;
             
             // Update deposit status
-            $update_sql = "UPDATE deposits SET status = 'approved' WHERE id = $deposit_id";
-            $conn->query($update_sql);
+            $update_sql = "UPDATE deposits SET status = 'approved' WHERE id = ?";
+            $stmt = $conn->prepare($update_sql);
+            $stmt->bind_param("i", $deposit_id);
+            $stmt->execute();
             
             // Update user balance
-            $user_sql = "UPDATE users SET balance = $new_balance WHERE id = $user_id";
-            $conn->query($user_sql);
+            $user_sql = "UPDATE users SET balance = ? WHERE id = ?";
+            $stmt = $conn->prepare($user_sql);
+            $stmt->bind_param("di", $new_balance, $user_id);
+            $stmt->execute();
             
-            // Create transaction record
-            $transaction_sql = "UPDATE transactions SET status = 'completed' WHERE wd_id = $deposit_id AND type = 'deposit'";
-            $conn->query($transaction_sql);
-
-            // Log dashboard access
-            try {
-                $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Approved Deposit', 'Admin approved a deposit of ID: $deposit_id', NOW())");
-                $stmt->execute([$admin_id]);
-            } catch (Exception $e) {
-                // Silently fail if logging doesn't work
-                error_log("Failed to log dashboard access: " . $e->getMessage());
-            }
+            // Update transaction record
+            $transaction_sql = "UPDATE transactions SET status = 'completed', balance_after = ? WHERE wd_id = ? AND type = 'deposit'";
+            $stmt = $conn->prepare($transaction_sql);
+            $stmt->bind_param("di", $new_balance, $deposit_id);
+            $stmt->execute();
             
             $conn->commit();
             $message = "Deposit approved successfully! User balance updated.";
@@ -86,26 +82,20 @@ if (isset($_POST['reject_deposit'])) {
     $deposit_id = $_POST['deposit_id'];
     $reason = $conn->real_escape_string($_POST['reject_reason']);
     
-    $sql = "UPDATE deposits SET status = 'rejected', admin_notes = '$reason' WHERE id = $deposit_id";
+    $sql = "UPDATE deposits SET status = 'rejected', admin_notes = ? WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("si", $reason, $deposit_id);
     
-    if ($conn->query($sql) === TRUE) {
-
-        // Create transaction record
-            $transaction_sql = "UPDATE transactions SET status = 'rejected' WHERE wd_id = $deposit_id AND type = 'deposit'";
-            if ($conn->query($transaction_sql) === TRUE) {
-                $message = "Deposit rejected successfully!";
-                $message_type = "success";
-
-                // Log dashboard access
-                try {
-                    $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Rejected Deposit', 'Admin rejected a deposit of ID: $deposit_id', NOW())");
-                    $stmt->execute([$admin_id]);
-                } catch (Exception $e) {
-                    // Silently fail if logging doesn't work
-                    error_log("Failed to log dashboard access: " . $e->getMessage());
-                }
-            }
-
+    if ($stmt->execute()) {
+        // Update transaction record
+        $transaction_sql = "UPDATE transactions SET status = 'rejected' WHERE wd_id = ? AND type = 'deposit'";
+        $stmt = $conn->prepare($transaction_sql);
+        $stmt->bind_param("i", $deposit_id);
+        
+        if ($stmt->execute()) {
+            $message = "Deposit rejected successfully!";
+            $message_type = "success";
+        }
     } else {
         $message = "Error rejecting deposit: " . $conn->error;
         $message_type = "error";
@@ -116,6 +106,7 @@ if (isset($_POST['reject_deposit'])) {
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
+$search_admin = isset($_GET['search_admin']) ? trim($_GET['search_admin']) : '';
 $offset = ($page - 1) * $limit;
 
 // Validate limit
@@ -125,9 +116,20 @@ if (!in_array($limit, $allowed_limits)) {
 }
 
 // Build query for deposits count
-$count_sql = "SELECT COUNT(*) as total FROM deposits d WHERE 1=1";
+$count_sql = "SELECT COUNT(d.id) as total 
+              FROM deposits d 
+              JOIN users u ON d.user_id = u.id 
+              JOIN admins a ON u.referral_code = a.referral_code 
+              WHERE 1=1";
 $params = [];
 $types = '';
+
+if ($search_admin) {
+    $count_sql .= " AND (a.username LIKE ? OR a.id = ?)";
+    $params[] = "%$search_admin%";
+    $params[] = $search_admin;
+    $types .= 'ss';
+}
 
 if ($filter_status) {
     $count_sql .= " AND d.status = ?";
@@ -136,7 +138,7 @@ if ($filter_status) {
 }
 
 $stmt_count = $conn->prepare($count_sql);
-if ($params) {
+if (!empty($params)) {
     $stmt_count->bind_param($types, ...$params);
 }
 $stmt_count->execute();
@@ -144,15 +146,17 @@ $result_count = $stmt_count->get_result();
 $total_records = $result_count->fetch_assoc()['total'];
 $total_pages = ceil($total_records / $limit);
 
-$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_code  = $stmt->get_result();
-$referral_code = $referral_code->fetch_assoc();
 // Build query for deposits with pagination
-$sql = "SELECT d.*, u.username, u.email, u.phone, u.balance as user_balance 
+$sql = "SELECT d.*, u.username, u.email, u.phone, u.balance as user_balance,
+               a.username as admin_username, a.id as admin_id
         FROM deposits d 
         JOIN users u ON d.user_id = u.id 
-        WHERE u.referral_code = '".$referral_code['referral_code']."'";
+        JOIN admins a ON u.referral_code = a.referral_code 
+        WHERE 1=1";
+
+if ($search_admin) {
+    $sql .= " AND (a.username LIKE ? OR a.id = ?)";
+}
 
 if ($filter_status) {
     $sql .= " AND d.status = ?";
@@ -164,6 +168,12 @@ $stmt = $conn->prepare($sql);
 $params = [];
 $types = '';
 
+if ($search_admin) {
+    $params[] = "%$search_admin%";
+    $params[] = $search_admin;
+    $types .= 'ss';
+}
+
 if ($filter_status) {
     $params[] = $filter_status;
     $types .= 's';
@@ -173,7 +183,7 @@ $params[] = $limit;
 $params[] = $offset;
 $types .= 'ii';
 
-if ($params) {
+if (!empty($params)) {
     $stmt->bind_param($types, ...$params);
 }
 
@@ -193,12 +203,24 @@ $total_pending_amount = 0;
 $total_deposit_amount = 0;
 
 $stats_sql = "SELECT 
-    COUNT(*) as pending_count,
-    SUM(amount) as pending_amount,
+    COUNT(d.id) as pending_count,
+    SUM(d.amount) as pending_amount,
     (SELECT SUM(amount) FROM deposits WHERE status = 'approved') as total_amount 
-    FROM deposits d JOIN users u on u.id = user_id
-    WHERE d.status = 'pending' AND u.referral_code = '".$referral_code['referral_code']."'";
-$stats_result = $conn->query($stats_sql);
+    FROM deposits d 
+    JOIN users u ON d.user_id = u.id 
+    JOIN admins a ON u.referral_code = a.referral_code 
+    WHERE d.status = 'pending'";
+    
+if ($search_admin) {
+    $stats_sql .= " AND (a.username LIKE ? OR a.id = ?)";
+}
+
+$stmt_stats = $conn->prepare($stats_sql);
+if ($search_admin) {
+    $stmt_stats->bind_param("ss", $search_admin, $search_admin);
+}
+$stmt_stats->execute();
+$stats_result = $stmt_stats->get_result();
 if ($stats_result && $stats_result->num_rows > 0) {
     $stats = $stats_result->fetch_assoc();
     $pending_deposits = $stats['pending_count'];
@@ -211,7 +233,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deposits - RB Games Admin</title>
+    <title>Deposits - Super Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -250,7 +272,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             min-height: 100vh;
         }
 
-        /* Sidebar Styles - FIXED */
+        /* Sidebar Styles */
         .sidebar {
             width: 260px;
             background: var(--dark);
@@ -275,7 +297,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             transform: translateX(0);
         }
 
-        /* Mobile menu toggle - FIXED */
+        /* Mobile menu toggle */
         .menu-toggle {
             display: none;
             background: none;
@@ -293,7 +315,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
         }
 
-        /* Overlay for mobile - FIXED */
+        /* Overlay for mobile */
         .sidebar-overlay {
             display: none;
             position: fixed;
@@ -309,7 +331,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             display: block;
         }
 
-        /* Main Content Styles - FIXED */
+        /* Main Content Styles */
         .main-content {
             flex: 1;
             padding: 2.2rem;
@@ -556,7 +578,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         .data-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1000px;
+            min-width: 1100px;
         }
 
         .data-table th, .data-table td {
@@ -624,6 +646,17 @@ if ($stats_result && $stats_result->num_rows > 0) {
             border: 1px solid rgba(11, 180, 201, 0.3);
         }
 
+        .admin-info {
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-block;
+            background: rgba(255, 60, 126, 0.2);
+            color: var(--primary);
+            border: 1px solid rgba(255, 60, 126, 0.3);
+        }
+
         /* Filter and Controls */
         .controls-row {
             display: flex;
@@ -679,9 +712,8 @@ if ($stats_result && $stats_result->num_rows > 0) {
         .form-control option{
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            /* border-radius: 6px; */
             color: var(--text-light);
-            }
+        }
 
         .btn {
             padding: 0.6rem 1.2rem;
@@ -938,48 +970,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             color: var(--danger);
         }
 
-           /* Pagination */
-    .pagination {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-top: 2rem;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-
-    .pagination a, .pagination span {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.6rem 1rem;
-        border-radius: 6px;
-        text-decoration: none;
-        color: var(--text-light);
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid var(--border-color);
-        transition: all 0.3s ease;
-        min-width: 40px;
-    }
-
-    .pagination a:hover {
-        background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
-        border-color: var(--primary);
-    }
-
-    .pagination .current {
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        color: white;
-        border-color: var(--primary);
-    }
-
-    .pagination .disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-
-        /* Responsive Design - FIXED */
+        /* Responsive Design */
         @media (max-width: 1200px) {
             .main-content {
                 padding: 1.5rem;
@@ -1068,7 +1059,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             }
         }
 
-        /* MOBILE STYLES - FIXED */
+        /* MOBILE STYLES */
         @media (max-width: 768px) {
             .sidebar {
                 width: 260px;
@@ -1225,11 +1216,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
             .payment-proof {
                 max-width: 150px;
             }
-            .pagination a, .pagination span {
-                padding: 0.5rem 0.8rem;
-                min-width: 35px;
-                font-size: 0.9rem;
-            }
         }
 
         @media (max-width: 480px) {
@@ -1274,33 +1260,27 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 width: 100%;
                 justify-content: center;
             }
-            .pagination {
-                gap: 0.3rem;
-            }
-            
-            .pagination a, .pagination span {
-                padding: 0.4rem 0.7rem;
-                min-width: 32px;
-                font-size: 0.8rem;
-            }
         }
 
-        @media (max-width: 400px) {
-            .pagination a, .pagination span {
-                padding: 0.35rem 0.6rem;
-                min-width: 30px;
-                font-size: 0.75rem;
-            }
+        .admin-info {
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-block;
+            background: rgba(255, 60, 126, 0.2);
+            color: var(--primary);
+            border: 1px solid rgba(255, 60, 126, 0.3);
         }
     </style>
 </head>
 <body>
-    <!-- Mobile Menu Toggle - FIXED -->
+    <!-- Mobile Menu Toggle -->
     <button class="menu-toggle" id="menuToggle">
         <i class="fas fa-bars"></i>
     </button>
 
-    <!-- Sidebar Overlay for Mobile - FIXED -->
+    <!-- Sidebar Overlay for Mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- Reject Modal -->
@@ -1353,58 +1333,62 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <h2>RB Games</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
+                <a href="super_admin_dashboard.php" class="menu-item ">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="users.php" class="menu-item">
+                <a href="super_admin_manage_admins.php" class="menu-item ">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="super_admin_all_users.php" class="menu-item">
                     <i class="fas fa-users"></i>
-                    <span>Users</span>
+                    <span>All Users</span>
                 </a>
-                
-
-                <a href="todays_active_games.php" class="menu-item ">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
+                <a href="super_admin_transactions.php" class="menu-item">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>All Transactions</span>
                 </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item ">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
+                <a href="super_admin_withdrawals.php" class="menu-item">
                     <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
+                    <span>All Withdrawals</span>
                 </a>
-                <a href="admin_deposits.php" class="menu-item active">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
+                <a href="super_admin_deposits.php" class="menu-item active">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>All Deposits</span>
                 </a>
-
-                <a href="applications.php" class="menu-item">
+                <a href="admin_games.php" class="menu-item">
+                    <i class="fa-regular fa-pen-to-square"></i>
+                    <span>Edit Games</span>
+                </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
                     <i class="fas fa-tasks"></i>
-                    <span>Applications</span>
+                    <span>All Applications</span>
                 </a>
-                
-                <a href="admin_reports.php" class="menu-item">
+                <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
+                    <span>Platform Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="profit_loss.php" class="menu-item ">
+                    <i class="fa-solid fa-sack-dollar"></i>
+                    <span>Profit & Loss</span>
+                </a>
+                <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
+                </a>
+                <a href="super_admin_settings.php" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -1414,14 +1398,20 @@ if ($stats_result && $stats_result->num_rows > 0) {
             <div class="header">
                 <div class="welcome">
                     <h1>Deposits Management</h1>
-                    <p>Manage user deposit requests</p>
+                    <p>Manage user deposit requests across all admins</p>
                 </div>
                 <div class="header-actions">
+                    <div class="current-time">
+                        <i class="fas fa-clock"></i>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
+                    </div>
+                    
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span><?php echo $admin_username; ?></span>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
                     </div>
-                    <a href="admin_logout.php" class="logout-btn">
+                    
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -1482,7 +1472,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <div class="controls-row">
                     <form method="GET" class="filter-form">
                         <div class="form-group">
-                            <label class="form-label">Status Filter</label>
+                            <input type="text" name="search_admin" class="form-control" 
+                                   placeholder="Search admin (username or ID)" 
+                                   value="<?php echo htmlspecialchars($search_admin); ?>">
+                        </div>
+                        
+                        <div class="form-group">
                             <select name="filter_status" class="form-control" onchange="this.form.submit()">
                                 <option value="">All Statuses</option>
                                 <option value="pending" <?php echo $filter_status == 'pending' ? 'selected' : ''; ?>>Pending</option>
@@ -1505,12 +1500,14 @@ if ($stats_result && $stats_result->num_rows > 0) {
                             </div>
                         </div>
 
-                        <input type="hidden" name="page" value="1">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                        
+                        <a href="super_admin_deposits.php" class="btn btn-secondary">
+                            <i class="fas fa-redo"></i> Reset Filters
+                        </a>
                     </form>
-
-                    <a href="admin_deposits.php" class="btn btn-secondary">
-                        <i class="fas fa-redo"></i> Reset Filters
-                    </a>
                 </div>
                 
                 <?php if (!empty($deposits)): ?>
@@ -1521,6 +1518,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                 <tr>
                                     <th>ID</th>
                                     <th>User</th>
+                                    <th>Admin</th>
                                     <th>Amount</th>
                                     <th>Payment Method</th>
                                     <th>UTR Number</th>
@@ -1538,6 +1536,9 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                             <div><?php echo $deposit['username']; ?></div>
                                             <div class="text-muted" style="font-size: 0.8rem;"><?php echo $deposit['email']; ?></div>
                                             <div class="text-muted" style="font-size: 0.8rem;">Balance: $<?php echo number_format($deposit['user_balance'], 2); ?></div>
+                                        </td>
+                                        <td>
+                                            <span class="admin-info"><?php echo $deposit['admin_username']; ?> (ID: <?php echo $deposit['admin_id']; ?>)</span>
                                         </td>
                                         <td>$<?php echo number_format($deposit['amount'], 2); ?></td>
                                         <td>
@@ -1563,9 +1564,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                         </td>
                                         <td><?php echo date('M j, Y g:i A', strtotime($deposit['created_at'])); ?></td>
                                         <td>
-                                        <?php if($referral_code['status'] == 'suspend'):?>
-                                            <span class="text-muted">No actions</span>
-                                        <?php else:?>
                                             <?php if ($deposit['status'] == 'pending'): ?>
                                                 <div class="action-buttons">
                                                     <form method="POST" style="display: inline;">
@@ -1583,7 +1581,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                             <?php else: ?>
                                                 <span class="text-muted">No actions</span>
                                             <?php endif; ?>
-                                        <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -1606,6 +1603,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                 <div class="deposit-row">
                                     <span class="deposit-label">Email:</span>
                                     <span class="deposit-value"><?php echo $deposit['email']; ?></span>
+                                </div>
+                                <div class="deposit-row">
+                                    <span class="deposit-label">Admin:</span>
+                                    <span class="deposit-value">
+                                        <span class="admin-info"><?php echo $deposit['admin_username']; ?> (ID: <?php echo $deposit['admin_id']; ?>)</span>
+                                    </span>
                                 </div>
                                 <div class="deposit-row">
                                     <span class="deposit-label">User Balance:</span>
@@ -1680,10 +1683,10 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <?php if ($total_pages > 1): ?>
                     <div class="pagination">
                         <?php if ($page > 1): ?>
-                            <a href="?page=1&limit=<?php echo $limit; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=1&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
                                 <i class="fas fa-angle-double-left"></i>
                             </a>
-                            <a href="?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
                                 <i class="fas fa-angle-left"></i>
                             </a>
                         <?php else: ?>
@@ -1698,17 +1701,17 @@ if ($stats_result && $stats_result->num_rows > 0) {
                         
                         for ($i = $start_page; $i <= $end_page; $i++):
                         ?>
-                            <a href="?page=<?php echo $i; ?>&limit=<?php echo $limit; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>" 
+                            <a href="?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>" 
                                class="<?php echo $i == $page ? 'current' : ''; ?>">
                                 <?php echo $i; ?>
                             </a>
                         <?php endfor; ?>
                         
                         <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
                                 <i class="fas fa-angle-right"></i>
                             </a>
-                            <a href="?page=<?php echo $total_pages; ?>&limit=<?php echo $limit; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $total_pages; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
                                 <i class="fas fa-angle-double-right"></i>
                             </a>
                         <?php else: ?>
@@ -1722,7 +1725,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
     </div>
 
     <script>
-        // Mobile Sidebar Toggle - FIXED
+        // Mobile Sidebar Toggle
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -1789,7 +1792,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         
         proofModalClose.addEventListener('click', function() {
             proofModal.classList.remove('active');
-        }); 
+        });
         
         proofModal.addEventListener('click', function(e) {
             if (e.target === proofModal) {
@@ -1806,6 +1809,5 @@ if ($stats_result && $stats_result->num_rows > 0) {
             }
         });
     </script>
-
 </body>
 </html>

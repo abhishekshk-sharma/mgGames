@@ -1,5 +1,5 @@
 <?php
-// admin_profile.php
+// super_admin_profile.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -7,20 +7,20 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as admin
-if (!isset($_SESSION['admin_id'])) {
-    header("location: login.php");
+// Redirect if not logged in as super admin
+if (!isset($_SESSION['super_admin_id'])) {
+    header("location: super_admin_login.php");
     exit;
 }
 
-// Get admin details
-$admin_id = $_SESSION['admin_id'];
-$admin_username = $_SESSION['admin_username'];
+// Get super admin details
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
-// Get admin data
-$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$admin_data = $stmt->get_result()->fetch_assoc();
+// Get super admin data
+$stmt = $conn->prepare("SELECT * FROM super_admin WHERE id = ?");
+$stmt->execute([$super_admin_id]);
+$super_admin_data = $stmt->get_result()->fetch_assoc();
 
 // Handle form submissions
 $message = '';
@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $value = trim($_POST['value']);
         
         // List of allowed fields that can be updated
-        $allowed_fields = ['username', 'phone', 'email', 'upiId', 'address'];
+        $allowed_fields = ['username', 'email_id', 'phone_number'];
         
         if (!in_array($field, $allowed_fields)) {
             $message = "Invalid field specified";
@@ -47,9 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $message = "Username cannot be empty";
                         $valid = false;
                     } else {
-                        // Check if username already exists (excluding current admin)
-                        $check_stmt = $conn->prepare("SELECT id FROM admins WHERE username = ? AND id != ?");
-                        $check_stmt->execute([$value, $admin_id]);
+                        // Check if username already exists (excluding current super admin)
+                        $check_stmt = $conn->prepare("SELECT id FROM super_admin WHERE username = ? AND id != ?");
+                        $check_stmt->execute([$value, $super_admin_id]);
                         if ($check_stmt->get_result()->num_rows > 0) {
                             $message = "Username already exists. Please choose a different one.";
                             $valid = false;
@@ -57,41 +57,50 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     }
                     break;
                     
-                case 'email':
+                case 'email_id':
                     if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
                         $message = "Please enter a valid email address";
                         $valid = false;
+                    } else {
+                        // Check if email already exists (excluding current super admin)
+                        $check_stmt = $conn->prepare("SELECT id FROM super_admin WHERE email_id = ? AND id != ?");
+                        $check_stmt->execute([$value, $super_admin_id]);
+                        if ($check_stmt->get_result()->num_rows > 0) {
+                            $message = "Email already exists. Please choose a different one.";
+                            $valid = false;
+                        }
                     }
                     break;
                     
-                case 'phone':
+                case 'phone_number':
                     if (!preg_match('/^\d{10}$/', $value)) {
                         $message = "Please enter a valid 10-digit phone number";
                         $valid = false;
-                    }
-                    break;
-                    
-                case 'upiId':
-                    if (!preg_match('/^[\w.-]+@[\w]+$/', $value)) {
-                        $message = "Please enter a valid UPI ID";
-                        $valid = false;
+                    } else {
+                        // Check if phone number already exists (excluding current super admin)
+                        $check_stmt = $conn->prepare("SELECT id FROM super_admin WHERE phone_number = ? AND id != ?");
+                        $check_stmt->execute([$value, $super_admin_id]);
+                        if ($check_stmt->get_result()->num_rows > 0) {
+                            $message = "Phone number already exists. Please choose a different one.";
+                            $valid = false;
+                        }
                     }
                     break;
             }
             
             if ($valid) {
                 // Update the field
-                $update_stmt = $conn->prepare("UPDATE admins SET $field = ? WHERE id = ?");
-                if ($update_stmt->execute([$value, $admin_id])) {
+                $update_stmt = $conn->prepare("UPDATE super_admin SET $field = ? WHERE id = ?");
+                if ($update_stmt->execute([$value, $super_admin_id])) {
                     // Update session if username changed
                     if ($field === 'username') {
-                        $_SESSION['admin_username'] = $value;
+                        $_SESSION['super_admin_username'] = $value;
                     }
                     
-                    // Refresh admin data
-                    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
-                    $stmt->execute([$admin_id]);
-                    $admin_data = $stmt->get_result()->fetch_assoc();
+                    // Refresh super admin data
+                    $stmt = $conn->prepare("SELECT * FROM super_admin WHERE id = ?");
+                    $stmt->execute([$super_admin_id]);
+                    $super_admin_data = $stmt->get_result()->fetch_assoc();
                     
                     $message = ucfirst($field) . " updated successfully";
                     $message_type = 'success';
@@ -104,13 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
     
     if (isset($_POST['update_password'])) {
-        // Update password (existing logic)
+        // Update password
         $current_password = $_POST['current_password'];
         $new_password = $_POST['new_password'];
         $confirm_password = $_POST['confirm_password'];
         
         // Validate current password
-        if (!password_verify($current_password, $admin_data['password_hash'])) {
+        if (!password_verify($current_password, $super_admin_data['hash_password'])) {
             $message = "Current password is incorrect";
             $message_type = 'error';
         } elseif (empty($new_password)) {
@@ -125,9 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } else {
             // Update password
             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-            $update_stmt = $conn->prepare("UPDATE admins SET password_hash = ? WHERE id = ?");
+            $update_stmt = $conn->prepare("UPDATE super_admin SET hash_password = ? WHERE id = ?");
             
-            if ($update_stmt->execute([$hashed_password, $admin_id])) {
+            if ($update_stmt->execute([$hashed_password, $super_admin_id])) {
                 $message = "Password updated successfully";
                 $message_type = 'success';
             } else {
@@ -138,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-$title = "Admin Profile - RB Games";
+$title = "Super Admin Profile - RB Games";
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -185,7 +194,7 @@ $title = "Admin Profile - RB Games";
             min-height: 100vh;
         }
 
-        /* Sidebar Styles (same as before) */
+        /* Sidebar Styles */
         .sidebar {
             width: 260px;
             background: var(--dark);
@@ -377,8 +386,6 @@ $title = "Admin Profile - RB Games";
         }
 
         #referral-code{
-            /* background-color: red; */
-            /* background: linear-gradient(to right, red, blue); */
             background: linear-gradient(to right, var(--primary), var(--secondary));
             color: transparent;
             -webkit-background-clip: text;
@@ -395,8 +402,6 @@ $title = "Admin Profile - RB Games";
         }
 
         .fa-copy{
-            
-            background-color: var(--dark); 
             background: linear-gradient(to right, pink, skyblue);
             -webkit-background-clip: text;
             color: transparent;
@@ -670,6 +675,44 @@ $title = "Admin Profile - RB Games";
             display: block;
         }
 
+        /* Admin badge and time */
+        .admin-badge {
+            background: rgba(255, 60, 126, 0.2);
+            padding: 0.6rem 1.2rem;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 500;
+            border: 1px solid rgba(255, 60, 126, 0.3);
+            white-space: nowrap;
+        }
+
+        .admin-badge i {
+            color: var(--primary);
+        }
+
+        .admin-name {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .current-time {
+            background: rgba(11, 180, 201, 0.2);
+            padding: 0.6rem 1.2rem;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 500;
+            border: 1px solid rgba(11, 180, 201, 0.3);
+            white-space: nowrap;
+        }
+
+        .current-time i {
+            color: var(--secondary);
+        }
+
         /* Responsive Design */
         @media (max-width: 993px) {
             .sidebar {
@@ -742,6 +785,10 @@ $title = "Admin Profile - RB Games";
                 padding: 1.5rem;
                 margin: 1rem;
             }
+            .admin-badge, .current-time {
+                width: 100%;
+                justify-content: center;
+            }
         }
 
         @media (max-width: 576px) {
@@ -780,6 +827,17 @@ $title = "Admin Profile - RB Games";
                 flex-direction: column;
             }
         }
+
+        .admin-info {
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-block;
+            background: rgba(255, 60, 126, 0.2);
+            color: var(--primary);
+            border: 1px solid rgba(255, 60, 126, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -798,54 +856,62 @@ $title = "Admin Profile - RB Games";
                 <h2>RB Games</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
+                <a href="super_admin_dashboard.php" class="menu-item ">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="users.php" class="menu-item">
+                <a href="super_admin_manage_admins.php" class="menu-item">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="super_admin_all_users.php" class="menu-item ">
                     <i class="fas fa-users"></i>
-                    <span>Users</span>
+                    <span>All Users</span>
                 </a>
-                <a href="todays_active_games.php" class="menu-item">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
+                <a href="super_admin_transactions.php" class="menu-item">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>All Transactions</span>
                 </a>
-                <a href="game_sessions_history.php" class="menu-item">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
+                <a href="super_admin_withdrawals.php" class="menu-item">
                     <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
+                    <span>All Withdrawals</span>
                 </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
+                <a href="super_admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>All Deposits</span>
                 </a>
-                <a href="applications.php" class="menu-item">
+                <a href="admin_games.php" class="menu-item">
+                    <i class="fa-regular fa-pen-to-square"></i>
+                    <span>Edit Games</span>
+                </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
                     <i class="fas fa-tasks"></i>
-                    <span>Applications</span>
+                    <span>All Applications</span>
                 </a>
-                <a href="admin_reports.php" class="menu-item">
+                <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
+                    <span>Platform Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item active">
+                <a href="profit_loss.php" class="menu-item ">
+                    <i class="fa-solid fa-sack-dollar"></i>
+                    <span>Profit & Loss</span>
+                </a>
+                <a href="super_admin_profile.php" class="menu-item active">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
+                </a>
+                <a href="super_admin_settings.php" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -854,15 +920,21 @@ $title = "Admin Profile - RB Games";
         <div class="main-content" id="mainContent">
             <div class="header">
                 <div class="welcome">
-                    <h1>Admin Profile</h1>
+                    <h1>Super Admin Profile</h1>
                     <p>Manage your account details and security settings</p>
                 </div>
                 <div class="header-actions">
                     <div class="current-time">
                         <i class="fas fa-clock"></i>
-                        <span><?php echo date('l, F j, Y'); ?></span>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
                     </div>
-                    <a href="admin_logout.php" class="logout-btn">
+                    
+                    <div class="admin-badge">
+                        <i class="fas fa-user-shield"></i>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
+                    </div>
+                    
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -877,10 +949,10 @@ $title = "Admin Profile - RB Games";
                     </div>
                 <?php endif; ?>
 
-                <!-- Admin Information Section -->
+                <!-- Super Admin Information Section -->
                 <div class="profile-section">
                     <div class="section-header">
-                        <h2 class="section-title"><i class="fas fa-user-circle"></i> Admin Information</h2>
+                        <h2 class="section-title"><i class="fas fa-user-shield"></i> Super Admin Information</h2>
                     </div>
                     
                     <div class="profile-grid">
@@ -888,73 +960,31 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Username
-
-                                <?php if($admin_data['status'] == 'suspend'):?>
-                            
-                <?php else:?>
-                                <i class="fas fa-edit edit-icon" data-field="username" data-value="<?php echo htmlspecialchars($admin_data['username']); ?>"></i>
-                <?php endif; ?>
+                                <i class="fas fa-edit edit-icon" data-field="username" data-value="<?php echo htmlspecialchars($super_admin_data['username']); ?>"></i>
                             </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['username']); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars($super_admin_data['username']); ?></div>
                         </div>
                         
                         <div class="info-group">
                             <span class="info-label">
-                                Phone
-                                <?php if($admin_data['status'] == 'suspend'):?>
-                            
-                <?php else:?>
-                                <i class="fas fa-edit edit-icon" data-field="phone" data-value="<?php echo htmlspecialchars($admin_data['phone']); ?>"></i>
-                <?php endif; ?>
+                                Email Address
+                                <i class="fas fa-edit edit-icon" data-field="email_id" data-value="<?php echo htmlspecialchars($super_admin_data['email_id']); ?>"></i>
                             </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['phone']); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars($super_admin_data['email_id']); ?></div>
                         </div>
                         
                         <div class="info-group">
                             <span class="info-label">
-                                Email
-                                <?php if($admin_data['status'] == 'suspend'):?>
-                            
-                <?php else:?>
-                                <i class="fas fa-edit edit-icon" data-field="email" data-value="<?php echo htmlspecialchars($admin_data['email']); ?>"></i>
-                <?php endif; ?>
+                                Phone Number
+                                <i class="fas fa-edit edit-icon" data-field="phone_number" data-value="<?php echo htmlspecialchars($super_admin_data['phone_number']); ?>"></i>
                             </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['email']); ?></div>
-                        </div>
-                        
-                        <div class="info-group">
-                            <span class="info-label">
-                                UPI ID
-                                <?php if($admin_data['status'] == 'suspend'):?>
-                            
-                <?php else:?>
-                                <i class="fas fa-edit edit-icon" data-field="upiId" data-value="<?php echo htmlspecialchars($admin_data['upiId']); ?>"></i>
-                <?php endif; ?>
-                            </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['upiId']); ?></div>
-                        </div>
-                        
-                        <div class="info-group">
-                            <span class="info-label">
-                                Address
-                                <?php if($admin_data['status'] == 'suspend'):?>
-                            
-                <?php else:?>
-                                <i class="fas fa-edit edit-icon" data-field="address" data-value="<?php echo htmlspecialchars($admin_data['address']); ?>"></i>
-                <?php endif; ?>
-                            </span>
-                            <div class="info-value"><?php echo htmlspecialchars($admin_data['address']); ?></div>
+                            <div class="info-value"><?php echo htmlspecialchars($super_admin_data['phone_number']); ?></div>
                         </div>
                         
                         <!-- Non-editable Fields -->
                         <div class="info-group">
-                            <span class="info-label">Aadhar Number</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['adhar']); ?></div>
-                        </div>
-                        
-                        <div class="info-group">
-                            <span class="info-label">PAN Number</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['pan']); ?></div>
+                            <span class="info-label">Super Admin ID</span>
+                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($super_admin_data['sp_adm_id']); ?></div>
                         </div>
                         
                         <div class="info-group">
@@ -962,43 +992,28 @@ $title = "Admin Profile - RB Games";
                             <i class="fa-solid fa-copy" id="copyBtn"></i>
                             <div class="info-value"> 
                                 <span id="referral-code">
-                                    <?php echo htmlspecialchars($admin_data['referral_code']); ?>
+                                    <?php echo htmlspecialchars($super_admin_data['referral_code']); ?>
                                 </span> 
                             </div>
                         </div>
                         
                         <div class="info-group">
-                            <span class="info-label">Partner Status</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars($admin_data['is_partner']); ?></div>
-                        </div>
-                        
-                        <div class="info-group">
-                            <span class="info-label">Account Status</span>
-                            <div class="info-value uneditable-field"><?php echo htmlspecialchars(ucfirst($admin_data['status'])); ?></div>
-                        </div>
-                        
-                        <div class="info-group">
                             <span class="info-label">Member Since</span>
-                            <div class="info-value uneditable-field"><?php echo date('F j, Y, g:i A', strtotime($admin_data['created_at'])); ?></div>
+                            <div class="info-value uneditable-field"><?php echo date('F j, Y, g:i A', strtotime($super_admin_data['created_at'])); ?></div>
                         </div>
                     </div>
                 </div>
 
-                <?php if($admin_data['status'] == 'suspend'):?>
-                            
-                <?php else:?>
-
-                    <!-- Change Password Section -->
-                    <div class="profile-section">
-                        <div class="section-header">
-                            <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
-                        </div>
-                        
-                        <button type="button" class="btn" id="changePasswordBtn">
-                            <i class="fas fa-key"></i> Change Password
-                        </button>
+                <!-- Change Password Section -->
+                <div class="profile-section">
+                    <div class="section-header">
+                        <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
                     </div>
-                <?php endif; ?>
+                    
+                    <button type="button" class="btn" id="changePasswordBtn">
+                        <i class="fas fa-key"></i> Change Password
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1136,18 +1151,14 @@ $title = "Admin Profile - RB Games";
                 const hint = document.getElementById('fieldHint');
                 
                 switch(field) {
-                    case 'email':
+                    case 'email_id':
                         input.type = 'email';
                         hint.textContent = 'Enter a valid email address';
                         break;
-                    case 'phone':
+                    case 'phone_number':
                         input.type = 'tel';
                         input.pattern = '[0-9]{10}';
                         hint.textContent = 'Enter a 10-digit phone number';
-                        break;
-                    case 'upiId':
-                        input.type = 'text';
-                        hint.textContent = 'Enter a valid UPI ID (e.g., username@upi)';
                         break;
                     default:
                         input.type = 'text';
@@ -1239,10 +1250,8 @@ $title = "Admin Profile - RB Games";
         function getFieldDisplayName(field) {
             const names = {
                 'username': 'Username',
-                'phone': 'Phone Number',
-                'email': 'Email Address',
-                'upiId': 'UPI ID',
-                'address': 'Address'
+                'phone_number': 'Phone Number',
+                'email_id': 'Email Address'
             };
             return names[field] || field;
         }
@@ -1270,7 +1279,5 @@ $title = "Admin Profile - RB Games";
 
         });
     </script>
-
-
 </body>
 </html>

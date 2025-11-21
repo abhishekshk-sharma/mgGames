@@ -1,6 +1,5 @@
-
 <?php
-// admin_withdrawals.php
+// super_admin_withdrawals.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -8,60 +7,48 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as admin
-if (!isset($_SESSION['admin_id'])) {
-    header("location: login.php");
+// Redirect if not logged in as super admin
+if (!isset($_SESSION['super_admin_id'])) {
+    header("location: super_admin_login.php");
     exit;
 }
 
-// Get admin details
-$admin_id = $_SESSION['admin_id'];
-$admin_username = $_SESSION['admin_username'];
+// Get super admin details
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
 // Handle withdrawal actions
 $message = '';
 $message_type = '';
-
-$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_code  = $stmt->get_result();
-$referral_code = $referral_code->fetch_assoc();
 
 // Approve withdrawal
 if (isset($_POST['approve_withdrawal'])) {
     $withdrawal_id = $_POST['withdrawal_id'];
     
     // Get withdrawal details
-    $sql = "SELECT * FROM withdrawals WHERE id = $withdrawal_id ";
-    $result = $conn->query($sql);
+    $sql = "SELECT * FROM withdrawals WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $withdrawal_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
     
     if ($result && $result->num_rows > 0) {
         $withdrawal = $result->fetch_assoc();
         
         // Update withdrawal status
-        $update_sql = "UPDATE withdrawals SET status = 'completed' WHERE id = $withdrawal_id";
+        $update_sql = "UPDATE withdrawals SET status = 'completed' WHERE id = ?";
+        $stmt = $conn->prepare($update_sql);
+        $stmt->bind_param("i", $withdrawal_id);
         
-        if ($conn->query($update_sql) === TRUE) {
-
-            // Create transaction record
-            $transaction_sql = "UPDATE transactions SET status = 'completed' WHERE wd_id = $withdrawal_id AND type = 'withdrawal'";
-            $conn->query($transaction_sql);
+        if ($stmt->execute()) {
+            // Update transaction record
+            $transaction_sql = "UPDATE transactions SET status = 'completed' WHERE wd_id = ? AND type = 'withdrawal'";
+            $stmt = $conn->prepare($transaction_sql);
+            $stmt->bind_param("i", $withdrawal_id);
+            $stmt->execute();
 
             $message = "Withdrawal approved successfully!";
             $message_type = "success";
-
-            // Log dashboard access
-            try {
-                $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Approved Withdrawal', 'Admin approved a withdrawal of ID: $withdrawal_id', NOW())");
-                $stmt->execute([$admin_id]);
-            } catch (Exception $e) {
-                // Silently fail if logging doesn't work
-                error_log("Failed to log dashboard access: " . $e->getMessage());
-            }
-
-            
-            // Here you would typically process the actual payment
-            // For now, we'll just update the transaction status
         } else {
             $message = "Error approving withdrawal: " . $conn->error;
             $message_type = "error";
@@ -78,8 +65,11 @@ if (isset($_POST['reject_withdrawal'])) {
     $reason = $conn->real_escape_string($_POST['reject_reason']);
     
     // Get withdrawal details to refund user balance
-    $sql = "SELECT * FROM transactions WHERE wd_id = $withdrawal_id AND type = 'withdrawal'";
-    $result = $conn->query($sql);
+    $sql = "SELECT * FROM transactions WHERE wd_id = ? AND type = 'withdrawal'";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $withdrawal_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
     
     if ($result && $result->num_rows > 0) {
         $withdrawal = $result->fetch_assoc();
@@ -90,43 +80,27 @@ if (isset($_POST['reject_withdrawal'])) {
         $conn->begin_transaction();
         
         try {
-            // Update withdrawal status to failed
-            $update_sql = "UPDATE transactions SET status = 'failed' WHERE wd_id = $withdrawal_id";
-            $conn->query($update_sql);
+            // Update withdrawal status to rejected
+            $update_sql = "UPDATE withdrawals SET status = 'rejected', admin_notes = ? WHERE id = ?";
+            $stmt = $conn->prepare($update_sql);
+            $stmt->bind_param("si", $reason, $withdrawal_id);
+            $stmt->execute();
+            
+            // Update transaction status
+            $transaction_sql = "UPDATE transactions SET status = 'rejected', description = CONCAT('Withdrawal rejected: ', ?) WHERE wd_id = ?";
+            $stmt = $conn->prepare($transaction_sql);
+            $stmt->bind_param("si", $reason, $withdrawal_id);
+            $stmt->execute();
             
             // Refund amount to user balance
-            $user_sql = "UPDATE users SET balance = balance + $amount WHERE id = $user_id";
-            $conn->query($user_sql);
-            
-
-            // Update withdrawal status
-            $update_sql = "UPDATE withdrawals SET status = 'rejected', admin_notes = '$reason' WHERE id = $withdrawal_id";
-            
-            if ($conn->query($update_sql) === TRUE) {
-                
-                // Create refund transaction
-                $refund_sql = "UPDATE transactions SET amount = $amount, balance_before = balance_before, balance_after = balance_after + $amount, description = 'Withdrawal rejected: $reason', status = 'rejected' WHERE wd_id = $withdrawal_id";
-                $conn->query($refund_sql);
-
-                // Log dashboard access
-            try {
-                $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Rejected Withdrawal', 'Admin rejected a withdrawal of ID: $withdrawal_id', NOW())");
-                $stmt->execute([$admin_id]);
-            } catch (Exception $e) {
-                // Silently fail if logging doesn't work
-                error_log("Failed to log dashboard access: " . $e->getMessage());
-            }
-
-            } else {
-                throw new Exception("Error updating withdrawal status: " . $conn->error);
-            }
-
+            $user_sql = "UPDATE users SET balance = balance + ? WHERE id = ?";
+            $stmt = $conn->prepare($user_sql);
+            $stmt->bind_param("di", $amount, $user_id);
+            $stmt->execute();
             
             $conn->commit();
             $message = "Withdrawal rejected and amount refunded!";
             $message_type = "success";
-
-            
             
         } catch (Exception $e) {
             $conn->rollback();
@@ -143,29 +117,39 @@ if (isset($_POST['reject_withdrawal'])) {
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
+$search_admin = isset($_GET['search_admin']) ? trim($_GET['search_admin']) : '';
 $offset = ($page - 1) * $limit;
 
 // Validate limit
-$allowed_limits = [5, 10, 20, 50, 100];
+$allowed_limits = [10, 20, 50, 100];
 if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
 
 // Build query for withdrawals count
-$count_sql = "SELECT COUNT(u.id) as total FROM transactions t
-JOIN users u ON t.user_id = u.id 
-WHERE t.type = 'withdrawal' AND u.referral_code = '".$referral_code['referral_code']."'";
+$count_sql = "SELECT COUNT(w.id) as total 
+              FROM withdrawals w 
+              JOIN users u ON w.user_id = u.id 
+              JOIN admins a ON u.referral_code = a.referral_code 
+              WHERE 1=1";
 $params = [];
 $types = '';
 
+if ($search_admin) {
+    $count_sql .= " AND (a.username LIKE ? OR a.id = ?)";
+    $params[] = "%$search_admin%";
+    $params[] = $search_admin;
+    $types .= 'ss';
+}
+
 if ($filter_status) {
-    $count_sql .= " AND t.status = ?";
+    $count_sql .= " AND w.status = ?";
     $params[] = $filter_status;
     $types .= 's';
 }
 
 $stmt_count = $conn->prepare($count_sql);
-if ($params) {
+if (!empty($params)) {
     $stmt_count->bind_param($types, ...$params);
 }
 $stmt_count->execute();
@@ -174,15 +158,16 @@ $total_records = $result_count->fetch_assoc()['total'];
 $total_pages = ceil($total_records / $limit);
 
 // Build query for withdrawals with pagination
-$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$referral_code  = $stmt->get_result();
-$referral_code = $referral_code->fetch_assoc();
-
-$sql = "SELECT w.*, u.username, u.email, u.phone, u.balance as user_balance 
+$sql = "SELECT w.*, u.username, u.email, u.phone, u.balance as user_balance, 
+               a.username as admin_username, a.id as admin_id
         FROM withdrawals w 
         JOIN users u ON w.user_id = u.id 
-        WHERE u.referral_code = '".$referral_code['referral_code']."'";
+        JOIN admins a ON u.referral_code = a.referral_code 
+        WHERE 1=1";
+
+if ($search_admin) {
+    $sql .= " AND (a.username LIKE ? OR a.id = ?)";
+}
 
 if ($filter_status) {
     $sql .= " AND w.status = ?";
@@ -194,6 +179,12 @@ $stmt = $conn->prepare($sql);
 $params = [];
 $types = '';
 
+if ($search_admin) {
+    $params[] = "%$search_admin%";
+    $params[] = $search_admin;
+    $types .= 'ss';
+}
+
 if ($filter_status) {
     $params[] = $filter_status;
     $types .= 's';
@@ -203,7 +194,7 @@ $params[] = $limit;
 $params[] = $offset;
 $types .= 'ii';
 
-if ($params) {
+if (!empty($params)) {
     $stmt->bind_param($types, ...$params);
 }
 
@@ -222,12 +213,23 @@ $pending_withdrawals = 0;
 $total_withdrawal_amount = 0;
 
 $stats_sql = "SELECT 
-    COUNT(u.id) as pending_count,
-    SUM(t.amount) as total_amount 
-    FROM transactions t
-    JOIN users u ON t.user_id = u.id 
-    WHERE t.type = 'withdrawal' AND t.status = 'pending' AND u.referral_code = '".$referral_code['referral_code']."'";
-$stats_result = $conn->query($stats_sql);
+    COUNT(w.id) as pending_count,
+    SUM(w.amount) as total_amount 
+    FROM withdrawals w 
+    JOIN users u ON w.user_id = u.id 
+    JOIN admins a ON u.referral_code = a.referral_code 
+    WHERE w.status = 'pending'";
+    
+if ($search_admin) {
+    $stats_sql .= " AND (a.username LIKE ? OR a.id = ?)";
+}
+
+$stmt_stats = $conn->prepare($stats_sql);
+if ($search_admin) {
+    $stmt_stats->bind_param("ss", $search_admin, $search_admin);
+}
+$stmt_stats->execute();
+$stats_result = $stmt_stats->get_result();
 if ($stats_result && $stats_result->num_rows > 0) {
     $stats = $stats_result->fetch_assoc();
     $pending_withdrawals = $stats['pending_count'];
@@ -239,10 +241,9 @@ if ($stats_result && $stats_result->num_rows > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Withdrawals - RB Games Admin</title>
+    <title>Withdrawals - Super Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
 <style>
     :root {
         --primary: #ff3c7e;
@@ -279,7 +280,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         min-height: 100vh;
     }
 
-    /* Sidebar Styles - FIXED */
+    /* Sidebar Styles */
     .sidebar {
         width: 260px;
         background: var(--dark);
@@ -304,7 +305,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         transform: translateX(0);
     }
 
-    /* Mobile menu toggle - FIXED */
+    /* Mobile menu toggle */
     .menu-toggle {
         display: none;
         background: none;
@@ -322,7 +323,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
     }
 
-    /* Overlay for mobile - FIXED */
+    /* Overlay for mobile */
     .sidebar-overlay {
         display: none;
         position: fixed;
@@ -338,7 +339,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         display: block;
     }
 
-    /* Main Content Styles - FIXED */
+    /* Main Content Styles */
     .main-content {
         flex: 1;
         padding: 2.2rem;
@@ -580,7 +581,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
     .data-table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 900px;
+        min-width: 1000px;
     }
 
     .data-table th, .data-table td {
@@ -698,9 +699,8 @@ if ($stats_result && $stats_result->num_rows > 0) {
     .form-control option{
         background: var(--card-bg);
         border: 1px solid var(--border-color);
-        /* border-radius: 6px; */
         color: var(--text-light);
-        }
+    }
 
     .btn {
         padding: 0.6rem 1.2rem;
@@ -978,17 +978,28 @@ if ($stats_result && $stats_result->num_rows > 0) {
     }
 
     .payment-method {
-            padding: 0.3rem 0.8rem;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            display: inline-block;
-            background: rgba(11, 180, 201, 0.2);
-            color: var(--secondary);
-            border: 1px solid rgba(11, 180, 201, 0.3);
-        }
+        padding: 0.3rem 0.8rem;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-block;
+        background: rgba(11, 180, 201, 0.2);
+        color: var(--secondary);
+        border: 1px solid rgba(11, 180, 201, 0.3);
+    }
 
-    /* Responsive Design - FIXED */
+    .admin-info {
+        padding: 0.3rem 0.8rem;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-block;
+        background: rgba(255, 60, 126, 0.2);
+        color: var(--primary);
+        border: 1px solid rgba(255, 60, 126, 0.3);
+    }
+
+    /* Responsive Design */
     @media (max-width: 1200px) {
         .main-content {
             padding: 1.5rem;
@@ -1077,7 +1088,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         }
     }
 
-    /* MOBILE STYLES - FIXED */
+    /* MOBILE STYLES */
     @media (max-width: 768px) {
         .sidebar {
             width: 260px;
@@ -1279,12 +1290,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
 </head>
 <body>
     <div class="admin-container">
-        <!-- Mobile Menu Toggle - FIXED: Only one toggle button -->
+        <!-- Mobile Menu Toggle -->
         <button class="menu-toggle" id="menuToggle">
             <i class="fas fa-bars"></i>
         </button>
 
-        <!-- Sidebar Overlay for Mobile - FIXED -->
+        <!-- Sidebar Overlay for Mobile -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
         <!-- Sidebar -->
@@ -1293,54 +1304,62 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <h2>RB Games</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
+                <a href="super_admin_dashboard.php" class="menu-item ">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="users.php" class="menu-item">
+                <a href="super_admin_manage_admins.php" class="menu-item ">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="super_admin_all_users.php" class="menu-item">
                     <i class="fas fa-users"></i>
-                    <span>Users</span>
+                    <span>All Users</span>
                 </a>
-                <a href="todays_active_games.php" class="menu-item">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
+                <a href="super_admin_transactions.php" class="menu-item">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>All Transactions</span>
                 </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item ">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item active">
+                <a href="super_admin_withdrawals.php" class="menu-item active">
                     <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
+                    <span>All Withdrawals</span>
                 </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
+                <a href="super_admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>All Deposits</span>
                 </a>
-                <a href="applications.php" class="menu-item">
+                <a href="admin_games.php" class="menu-item">
+                    <i class="fa-regular fa-pen-to-square"></i>
+                    <span>Edit Games</span>
+                </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
                     <i class="fas fa-tasks"></i>
-                    <span>Applications</span>
+                    <span>All Applications</span>
                 </a>
-                <a href="admin_reports.php" class="menu-item">
+                <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
+                    <span>Platform Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="profit_loss.php" class="menu-item">
+                    <i class="fa-solid fa-sack-dollar"></i>
+                    <span>Profit & Loss</span>
+                </a>
+                <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
+                </a>
+                <a href="super_admin_settings.php" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -1350,7 +1369,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             <div class="header">
                 <div class="welcome">
                     <h1>Withdrawal Management</h1>
-                    <p>Manage and process user withdrawal requests</p>
+                    <p>Manage and process user withdrawal requests across all admins</p>
                 </div>
                 
                 <div class="header-actions">
@@ -1361,10 +1380,10 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span class="admin-name"><?php echo htmlspecialchars($admin_username); ?></span>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
                     </div>
                     
-                    <a href="logout.php" class="logout-btn">
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -1412,21 +1431,25 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     </h2>
                     
                     <div class="controls-row">
-                        <!-- FILTER FORM - FIXED: Added proper form wrapper -->
-                        <form method="GET" class="filter-form" id="filterForm">
+                        <form method="GET" class="filter-form">
                             <div class="form-group">
-                                <select name="filter_status" id="filterStatus" class="form-control">
+                                <input type="text" name="search_admin" class="form-control" 
+                                       placeholder="Search admin (username or ID)" 
+                                       value="<?php echo htmlspecialchars($search_admin); ?>">
+                            </div>
+                            
+                            <div class="form-group">
+                                <select name="filter_status" class="form-control" onchange="this.form.submit()">
                                     <option value="">All Status</option>
                                     <option value="pending" <?php echo $filter_status === 'pending' ? 'selected' : ''; ?>>Pending</option>
                                     <option value="completed" <?php echo $filter_status === 'completed' ? 'selected' : ''; ?>>Completed</option>
-                                    
                                     <option value="rejected" <?php echo $filter_status === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                                 </select>
                             </div>
                             
                             <div class="limit-selector">
                                 <span class="form-label">Show:</span>
-                                <select name="limit" id="limit" class="form-control">
+                                <select name="limit" class="form-control" onchange="this.form.submit()">
                                     <?php foreach ($allowed_limits as $allowed_limit): ?>
                                         <option value="<?php echo $allowed_limit; ?>" <?php echo $limit == $allowed_limit ? 'selected' : ''; ?>>
                                             <?php echo $allowed_limit; ?>
@@ -1435,10 +1458,13 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                 </select>
                             </div>
                             
-                            <!-- Hidden field to preserve page parameter -->
-                            <input type="hidden" name="page" value="1">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-filter"></i> Apply
+                            </button>
                             
-                            <button type="submit" class="btn btn-primary" style="display: none;" id="filterSubmit">Apply</button>
+                            <a href="super_admin_withdrawals.php" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Clear
+                            </a>
                         </form>
                     </div>
                 </div>
@@ -1450,6 +1476,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                             <tr>
                                 <th>ID</th>
                                 <th>User</th>
+                                <th>Admin</th>
                                 <th>Amount</th>
                                 <th>Payment Method</th>
                                 <th>Account Details</th>
@@ -1461,7 +1488,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                         <tbody>
                             <?php if (empty($withdrawals)): ?>
                                 <tr>
-                                    <td colspan="8" style="text-align: center; padding: 2rem;">
+                                    <td colspan="9" style="text-align: center; padding: 2rem;">
                                         <i class="fas fa-inbox" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem; display: block;"></i>
                                         <p style="color: var(--text-muted);">No withdrawal requests found</p>
                                     </td>
@@ -1473,6 +1500,9 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                         <td>
                                             <div><strong><?php echo htmlspecialchars($withdrawal['username']); ?></strong></div>
                                             <div style="color: var(--text-muted); font-size: 0.85rem;"><?php echo htmlspecialchars($withdrawal['email']); ?></div>
+                                        </td>
+                                        <td>
+                                            <span class="admin-info"><?php echo htmlspecialchars($withdrawal['admin_username']); ?> (ID: <?php echo $withdrawal['admin_id']; ?>)</span>
                                         </td>
                                         <td>
                                             <strong style="color: var(--primary);">₹<?php echo number_format($withdrawal['amount'], 2); ?></strong>
@@ -1503,11 +1533,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                             <?php echo date('M j, Y g:i A', strtotime($withdrawal['created_at'])); ?>
                                         </td>
                                         <td>
-                                        <?php if($referral_code['status'] == 'suspend'):?>
-                                            <span class="text-muted">No actions</span>
-                                        <?php else:?>
                                             <div class="action-buttons">
-                                            
                                                 <?php if ($withdrawal['status'] == 'pending'): ?>
                                                     <form method="POST" style="display: inline;">
                                                         <input type="hidden" name="withdrawal_id" value="<?php echo $withdrawal['id']; ?>">
@@ -1525,7 +1551,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                                     <span class="text-muted">No actions</span>
                                                 <?php endif; ?>
                                             </div>
-                                        <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -1552,6 +1577,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                         <div class="withdrawal-value">
                                             <div><strong><?php echo htmlspecialchars($withdrawal['username']); ?></strong></div>
                                             <div style="color: var(--text-muted); font-size: 0.85rem;"><?php echo htmlspecialchars($withdrawal['email']); ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="withdrawal-row">
+                                        <div class="withdrawal-label">Admin</div>
+                                        <div class="withdrawal-value">
+                                            <span class="admin-info"><?php echo htmlspecialchars($withdrawal['admin_username']); ?> (ID: <?php echo $withdrawal['admin_id']; ?>)</span>
                                         </div>
                                     </div>
                                     <div class="withdrawal-row">
@@ -1621,7 +1652,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <?php if ($total_pages > 1): ?>
                     <div class="pagination">
                         <?php if ($page > 1): ?>
-                            <a href="?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>">
+                            <a href="?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
                                 <i class="fas fa-chevron-left"></i> Prev
                             </a>
                         <?php else: ?>
@@ -1632,12 +1663,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
                             <?php if ($i == $page): ?>
                                 <span class="current"><?php echo $i; ?></span>
                             <?php else: ?>
-                                <a href="?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>"><?php echo $i; ?></a>
+                                <a href="?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>"><?php echo $i; ?></a>
                             <?php endif; ?>
                         <?php endfor; ?>
 
                         <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>">
+                            <a href="?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
                                 Next <i class="fas fa-chevron-right"></i>
                             </a>
                         <?php else: ?>
@@ -1676,7 +1707,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
     </div>
 
     <script>
-        // Mobile Sidebar Toggle - FIXED
+        // Mobile Sidebar Toggle
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -1757,25 +1788,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 document.body.style.overflow = '';
             }
         });
-
-        // FILTER FUNCTIONALITY - FIXED: Added proper filter handling
-        const filterStatus = document.getElementById('filterStatus');
-        const limitSelect = document.getElementById('limit');
-        const filterForm = document.getElementById('filterForm');
-
-        // Auto-submit form when filter values change
-        if (filterStatus) {
-            filterStatus.addEventListener('change', function() {
-                filterForm.submit();
-            });
-        }
-
-        if (limitSelect) {
-            limitSelect.addEventListener('change', function() {
-                filterForm.submit();
-            });
-        }
     </script>
-
 </body>
 </html>
