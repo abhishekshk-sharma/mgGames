@@ -113,7 +113,6 @@ if (!empty($date_to)) {
 
 $where_clause = implode(" AND ", $where_conditions);
 
-// Function to get user bets with pagination and filtering
 function getUserBets($user_id, $where_clause, $params, $param_types, $offset, $bets_per_page) {
     global $conn;
     
@@ -130,15 +129,18 @@ function getUserBets($user_id, $where_clause, $params, $param_types, $offset, $b
                 b.placed_at, 
                 b.open_time, 
                 b.close_time,
-                r.result_value,
-                r.declared_at,
+                b.game_session_id,
+                gs.open_result,
+                gs.close_result,
+                gs.jodi_result,
+                gs.session_date,
                 CASE 
                     WHEN b.status = 'won' THEN b.potential_win - b.amount
                     WHEN b.status = 'lost' THEN -b.amount
                     ELSE 0 
                 END as profit_loss
             FROM bets b
-            LEFT JOIN results r ON b.game_session_id = r.game_session_id
+            LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
             WHERE $where_clause
             ORDER BY b.placed_at DESC
             LIMIT ? OFFSET ?";
@@ -163,13 +165,13 @@ function getUserBets($user_id, $where_clause, $params, $param_types, $offset, $b
     return $bets;
 }
 
-// Function to get total bets count for pagination
+// Function to get total bets count for pagination - UPDATED
 function getTotalBetsCount($user_id, $where_clause, $params, $param_types) {
     global $conn;
     
     $sql = "SELECT COUNT(*) as total 
             FROM bets b
-            LEFT JOIN results r ON b.game_session_id = r.game_session_id
+            LEFT JOIN game_sessions gs ON b.game_session_id = gs.id
             WHERE $where_clause";
     
     $total = 0;
@@ -188,7 +190,79 @@ function getTotalBetsCount($user_id, $where_clause, $params, $param_types) {
     
     return $total;
 }
+// Function to determine the correct result based on game type and bet mode
+function getGameResult($bet) {
+    $result = '';
+    
+    if (!empty($bet['open_result']) || !empty($bet['close_result']) || !empty($bet['jodi_result'])) {
+        // Determine which result to show based on game type and bet mode
+        switch ($bet['game_type']) {
+            case 'single_ank':
+                if ($bet['bet_mode'] === 'open' && !empty($bet['open_result'])) {
+                    $result = $bet['open_result'];
+                } elseif ($bet['bet_mode'] === 'close' && !empty($bet['close_result'])) {
+                    $result = $bet['close_result'];
+                }
+                break;
+                
+            case 'jodi':
+                if (!empty($bet['jodi_result'])) {
+                    $result = $bet['jodi_result'];
+                }
+                break;
+                
+            case 'single_patti':
+            case 'double_patti':
+            case 'triple_patti':
+            case 'sp_motor':
+            case 'dp_motor':
+            case 'sp_game':
+            case 'dp_game':
+            case 'sp_set':
+            case 'dp_set':
+            case 'tp_set':
+                // For patti games, show close result
+                if (!empty($bet['close_result'])) {
+                    $result = $bet['close_result'];
+                }
+                break;
+                
+            default:
+                // For other game types, try to show any available result
+                if (!empty($bet['close_result'])) {
+                    $result = $bet['close_result'];
+                } elseif (!empty($bet['open_result'])) {
+                    $result = $bet['open_result'];
+                } elseif (!empty($bet['jodi_result'])) {
+                    $result = $bet['jodi_result'];
+                }
+                break;
+        }
+    }
+    
+    return $result;
+}
 
+// Function to check if bet is a winner
+function isWinningBet($bet, $result) {
+    if (empty($result) || $bet['status'] !== 'pending') {
+        return $bet['status']; // Return current status if no result or already decided
+    }
+    
+    $numbers_played = json_decode($bet['numbers_played'], true);
+    if (!is_array($numbers_played)) {
+        return 'pending';
+    }
+    
+    // Check if any of the played numbers match the result
+    foreach ($numbers_played as $number => $amount) {
+        if ($number == $result) {
+            return 'won';
+        }
+    }
+    
+    return 'lost';
+}
 // Get filtered and paginated bets
 $user_bets = getUserBets($user_id, $where_clause, $params, $param_types, $offset, $bets_per_page);
 $total_bets_count = getTotalBetsCount($user_id, $where_clause, $params, $param_types);
@@ -504,41 +578,37 @@ function formatDefault($decoded_data, $result_value) {
             font-family: 'Poppins', sans-serif;
         }
 
-        :root {
-                --primary: #c1436dff;
+         :root {
+            --primary: rgba(243, 204, 46, 0.85);
             --secondary: #0fb4c9ff;
-            --accent: #00cec9;
-            --dark: #7098a3ff;
-            --light: #f5f6fa;
-            --success: #00A650;
-            --warning: #FF9800;
-            --danger: #D32F2F;
-            --card-bg: #1A1A1A;
-            --header-bg: rgba(13, 13, 13, 0.95);
+            --accent: #c0c0c0;
+            --dark: #f7f5f5ff;
+            --light: #f8f7f4ff;
+            --success: #0af20aff;
+            --warning: rgba(250, 120, 6, 1);
+            --danger: #ff2200ff;
+    --card-bg: rgba(43, 43, 43, 0.95);
+                --header-bg: rgba(255, 255, 255, 0.98);
+            --gradient-primary: linear-gradient(135deg, #b09707ff 0%, #ffed4e 100%);
+            --gradient-secondary: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
+            --gradient-accent: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+            --gradient-dark: linear-gradient(135deg, #e4d69bff 0%, rgba(13, 13, 13, 1) 100%);
+            --gradient-premium: linear-gradient(135deg, #ffd700 0%,rgba(16, 16, 15, 1)100%);
+            --card-shadow: 0 12px 40px rgba(255, 215, 0, 0.15);
+            --glow-effect: 0 0 25px rgba(255, 215, 0, 0.3);
+            --glow-blue: 0 0 25px rgba(0, 0, 0, 0.3);
+            --border-radius: 16px;
         }
 
         body {
-            background: linear-gradient(135deg, #21213fff 0%, #0e1427ff 100%);
-            color: var(--light);
+             background: var(--gradient-dark);
+            color: var(--dark);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             background-attachment: fixed;
         }
-        .hamburger {
-            display: none;
-            flex-direction: column;
-            gap: 5px;
-            cursor: pointer;
-        }
-
-        .hamburger span {
-            width: 25px;
-            height: 3px;
-            background: var(--light);
-            border-radius: 5px;
-            transition: all 0.3s ease;
-        }
+ 
 
         /* Main Content */
         main {
@@ -801,44 +871,8 @@ function formatDefault($decoded_data, $result_value) {
 
         /* Responsive Design */
             @media (max-width: 768px) {
-            header {
-                padding: 1rem;
-            }
-            
-            nav ul {
-                position: fixed;
-                top: 80px;
-                left: -100%;
-                width: 100%;
-                height: calc(100vh - 80px);
-                background: rgba(13, 13, 13, 0.95);
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 2rem;
-                transition: left 0.3s ease;
-            }
-            
-            nav ul.active {
-                left: 0;
-            }
-            
-            .hamburger {
-                display: flex;
-            }
-            
-            .hamburger.active span:nth-child(1) {
-                transform: rotate(45deg) translate(5px, 5px);
-            }
-            
-            .hamburger.active span:nth-child(2) {
-                opacity: 0;
-            }
-            
-            .hamburger.active span:nth-child(3) {
-                transform: rotate(-45deg) translate(5px, -5px);
-            }
-            
+        
+    
             .user-info {
                 display: none;
             }
@@ -1179,6 +1213,7 @@ function formatDefault($decoded_data, $result_value) {
         font-size: 0.8rem;
     }
 }
+
     </style>
 </head>
 <body>
@@ -1308,78 +1343,71 @@ function formatDefault($decoded_data, $result_value) {
             <th>P/L</th>
         </tr>
     </thead>
-    <tbody>
-        <?php foreach ($user_bets as $bet): ?>
-      <tr>
-    <td><?php echo date('M j, Y g:i A', strtotime($bet['placed_at'])); ?></td>
-    <td><?php echo htmlspecialchars($bet['game_name']); ?></td>
-    <td>
-        <?php 
-        // Convert game_type code to readable format
-        $game_type_map = [
-            'single_ank' => 'Single Ank', 
-            'jodi' => 'Jodi',
-            'single_patti' => 'Single Patti',
-            'double_patti' => 'Double Patti',
-            'triple_patti' => 'Triple Patti',
-            'half_sangam' => 'Half Sangam',
-            'full_sangam' => 'Full Sangam',
-            'sp_motor' => 'SP Motor',
-            'dp_motor' => 'DP Motor',
-            'red_bracket' => 'Red Bracket',
-            'digital_jodi' => 'Digital Jodi',
-            'choice_pana' => 'Choice Pana',
-            'group_jodi' => 'Group Jodi',
-            'abr_100' => 'ABR 100',
-            'abr_cut' => 'ABR Cut'
-        ];
-        echo isset($game_type_map[$bet['game_type']]) ? $game_type_map[$bet['game_type']] : ucfirst(str_replace('_', ' ', $bet['game_type']));
-        ?>
-    </td>
-    <td><?php echo ucfirst($bet['bet_mode']); ?></td>
-    <td><?php echo htmlspecialchars($bet['open_time']); ?></td>
-    <td>
-        <?php 
-        if (!empty($bet['close_time'])) {
-            echo htmlspecialchars($bet['close_time']);
-        } else {
-            echo 'N/A';
-        }
-        ?>
-    </td>
+<tbody>
+    <?php foreach ($user_bets as $bet): 
+        $game_result = getGameResult($bet);
+        $display_result = $game_result ?: 'N/A';
+    ?>
+    <tr>
+        <td><?php echo date('M j, Y g:i A', strtotime($bet['placed_at'])); ?></td>
+        <td><?php echo htmlspecialchars($bet['game_name']); ?></td>
         <td>
             <?php 
-            echo formatNumbers($bet['game_type'], $bet['numbers_played'], isset($bet['result_value']) ? $bet['result_value'] : null);
+            echo isset($game_type_map[$bet['game_type']]) ? $game_type_map[$bet['game_type']] : ucfirst(str_replace('_', ' ', $bet['game_type']));
             ?>
         </td>
-    <td>₹<?php echo number_format($bet['amount'], 2); ?></td>
-    <td>₹<?php echo number_format($bet['potential_win'], 2); ?></td>
-    <td>
-        <span class="status-badge status-<?php echo $bet['status']; ?>">
-            <?php echo ucfirst($bet['status']); ?>
-        </span>
-    </td>
-    <td>
-        <?php if (!empty($bet['result_value'])): ?>
-            <?php echo htmlspecialchars($bet['result_value']); ?>
-            <br>
-            <small><?php echo date('M j, g:i A', strtotime($bet['declared_at'])); ?></small>
-        <?php else: ?>
-            N/A
-        <?php endif; ?>
-    </td>
-    <td>
-        <?php if ($bet['status'] === 'won'): ?>
-            <span style="color: var(--success)">+$<?php echo number_format($bet['profit_loss'], 2); ?></span>
-        <?php elseif ($bet['status'] === 'lost'): ?>
-            <span style="color: var(--danger)">-$<?php echo number_format(abs($bet['profit_loss']), 2); ?></span>
-        <?php else: ?>
-            -
-        <?php endif; ?>
-    </td>
-</tr>
-        <?php endforeach; ?>
-    </tbody>
+        <td><?php echo ucfirst($bet['bet_mode']); ?></td>
+        <td><?php echo htmlspecialchars($bet['open_time']); ?></td>
+        <td>
+            <?php 
+            if (!empty($bet['close_time'])) {
+                echo htmlspecialchars($bet['close_time']);
+            } else {
+                echo 'N/A';
+            }
+            ?>
+        </td>
+        <td>
+            <?php 
+            echo formatNumbers($bet['game_type'], $bet['numbers_played'], $game_result);
+            ?>
+        </td>
+        <td>₹<?php echo number_format($bet['amount'], 2); ?></td>
+        <td>₹<?php echo number_format($bet['potential_win'], 2); ?></td>
+        <td>
+            <span class="status-badge status-<?php echo $bet['status']; ?>">
+                <?php echo ucfirst($bet['status']); ?>
+            </span>
+        </td>
+        <td>
+            <?php if (!empty($display_result) && $display_result !== 'N/A'): ?>
+                <span class="result-value" style="font-weight: bold; color: var(--primary);">
+                    <?php echo htmlspecialchars($display_result); ?>
+                </span>
+                <br>
+                <small style="color: #b2bec3;">
+                    <?php echo date('M j, Y', strtotime($bet['session_date'])); ?>
+                </small>
+            <?php else: ?>
+                <span style="color: #b2bec3;">N/A</span>
+                <?php if ($bet['status'] === 'pending'): ?>
+                    <br>
+                    <small style="color: var(--warning);">Coming Soon</small>
+                <?php endif; ?>
+            <?php endif; ?>
+        </td>
+        <td>
+            <?php if ($bet['status'] === 'won'): ?>
+                <span style="color: var(--success)">₹<?php echo number_format($bet['profit_loss'], 2); ?></span>
+            <?php elseif ($bet['status'] === 'lost'): ?>
+                <span style="color: var(--danger)">₹<?php echo number_format(abs($bet['profit_loss']), 2); ?></span>
+            <?php else: ?>
+                -
+            <?php endif; ?>
+        </td>
+    </tr>
+    <?php endforeach; ?>
+</tbody>
 </table>
                 
               <?php if (count($user_bets) > 0 && $total_pages > 1): ?>

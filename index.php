@@ -31,16 +31,17 @@ if (isset($_SESSION['user_id'])) {
     }
 }
 
-// Fetch all games from database for dynamic modal
+// Fetch all games from database with images
 $games_data = [];
-$sql_games = "SELECT id, name, open_time, close_time, description FROM games WHERE status = 'active'";
+$sql_games = "SELECT id, name, open_time, close_time, description, dynamic_images FROM games WHERE status = 'active'";
 if ($result = $conn->query($sql_games)) {
     while ($row = $result->fetch_assoc()) {
         $games_data[$row['name']] = [
             'id' => $row['id'],
             'openTime' => date('H:i', strtotime($row['open_time'])),
             'closeTime' => date('H:i', strtotime($row['close_time'])),
-            'description' => $row['description']
+            'description' => $row['description'],
+            'image' => $row['dynamic_images'] ? $row['dynamic_images'] : 'uploads/imgs/default-game.jpg'
         ];
     }
     $result->free();
@@ -55,6 +56,7 @@ if ($result = $conn->query($sql_types)) {
     }
     $result->free();
 }
+
 // Function to get game status based on current time
 function getGameStatus($open_time, $close_time) {
     $current_time = date('H:i:s');
@@ -71,14 +73,15 @@ function getGameStatus($open_time, $close_time) {
     }
 }
 
-// Function to check if game is playable - UPDATED: Allow both coming and open games
+// Function to check if game is playable
 function isGamePlayable($open_time, $close_time) {
     $status = getGameStatus($open_time, $close_time);
     return $status['status'] === 'open' || $status['status'] === 'coming';
 }
-// Fetch all games with proper time format and status
+
+// Fetch all games with proper time format, status, and images
 $games_data = [];
-$sql_games = "SELECT id, name, open_time, close_time, description FROM games WHERE status = 'active'";
+$sql_games = "SELECT id, name, open_time, close_time, description, dynamic_images FROM games WHERE status = 'active'";
 if ($result = $conn->query($sql_games)) {
     while ($row = $result->fetch_assoc()) {
         $game_status = getGameStatus($row['open_time'], $row['close_time']);
@@ -89,6 +92,7 @@ if ($result = $conn->query($sql_games)) {
             'openTimeFull' => $row['open_time'],
             'closeTimeFull' => $row['close_time'],
             'description' => $row['description'],
+            'image' => $row['dynamic_images'] ?  $row['dynamic_images'] : 'uploads/imgs/default-game.jpg',
             'status' => $game_status['status'],
             'statusText' => $game_status['text'],
             'statusClass' => $game_status['class'],
@@ -106,7 +110,8 @@ if ($result = $conn->query($sql_games)) {
             'status' => 'closed',
             'statusText' => 'Closed',
             'statusClass' => 'status-closed',
-            'isPlayable' => false
+            'isPlayable' => false,
+            'image' => 'uploads/imgs/default-game.jpg'
         ],
         'Mumbai Main' => [
             'id' => 2,
@@ -115,7 +120,8 @@ if ($result = $conn->query($sql_games)) {
             'status' => 'closed',
             'statusText' => 'Closed',
             'statusClass' => 'status-closed',
-            'isPlayable' => false
+            'isPlayable' => false,
+            'image' => 'uploads/imgs/default-game.jpg'
         ]
     ];
 }
@@ -125,7 +131,7 @@ error_log("Games Data: " . print_r($games_data, true));
 include 'includes/header.php';
 ?>
 
-<style>
+    <style>
         * {
             margin: 0;
             padding: 0;
@@ -134,262 +140,822 @@ include 'includes/header.php';
         }
 
         :root {
-            --primary: #c1436dff;
+            --primary: #ddaa11ff;
             --secondary: #0fb4c9ff;
-            --accent: #00cec9;
-            --dark: #7098a3ff;
-            --light: #f5f6fa;
-            --success: #00b894;
-            --warning: #fdcb6e;
-            --danger: #d63031;
+            --accent: #c0c0c0;
+             --dark: #1d1d1dff;
+            --light: #fff8dc;
+            --success: #32cd32;
+            --warning: #ffbf00ff;
+            --danger: #ff4500;
+            --card-bg: rgba(230, 227, 227, 0.95);
+            --header-bg: rgba(255, 255, 255, 0.98);
+            --gradient-primary: linear-gradient(135deg, #b09707ff 0%, #ffed4e 100%);
+            --gradient-secondary: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
+            --gradient-accent: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+            --gradient-dark: linear-gradient(135deg, #2e2e2dff 0%, rgba(33, 33, 33, 1) 100%);
+            --gradient-premium: linear-gradient(135deg, #ffd700 0%,rgba(16, 16, 15, 1)100%);
+            --card-shadow: 0 12px 40px rgba(255, 215, 0, 0.15);
+            --glow-effect: 0 0 25px rgba(255, 215, 0, 0.3);
+            --glow-blue: 0 0 25px rgba(0, 0, 0, 0.3);
+            --border-radius: 16px;
         }
-
-        body {
-            background: linear-gradient(135deg, #052b43ff 0%, #0e1427ff 100%);
-            color: var(--light);
+     body {
+            background: var(--gradient-dark);
+            color: var(--dark);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
+        }
+        /* Animated Background Elements */
+        .bg-elements {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
         }
 
-      
-        .hamburger {
-            display: none;
-            flex-direction: column;
-            gap: 5px;
-            cursor: pointer;
+        .bg-element {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+            opacity: 0.08;
+            animation: float 20s infinite linear;
         }
 
-        .hamburger span {
-            width: 25px;
-            height: 3px;
-            background: var(--light);
-            border-radius: 5px;
-            transition: all 0.3s ease;
+        .bg-element:nth-child(1) {
+            width: 300px;
+            height: 300px;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
         }
 
+        .bg-element:nth-child(2) {
+            width: 200px;
+            height: 200px;
+            top: 60%;
+            right: 10%;
+            animation-delay: -5s;
+            background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
+        }
+
+        .bg-element:nth-child(3) {
+            width: 150px;
+            height: 150px;
+            bottom: 20%;
+            left: 20%;
+            animation-delay: -10s;
+            background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg);
+            }
+            25% {
+                transform: translateY(-20px) rotate(90deg);
+            }
+            50% {
+                transform: translateY(0) rotate(180deg);
+            }
+            75% {
+                transform: translateY(20px) rotate(270deg);
+            }
+        }
+
+    
         /* Main Content */
         main {
             flex: 1;
-            margin-top: 80px;
-            padding: 2rem;
+            margin-top: 90px;
+            padding: 2.5rem;
+            max-width: 1800px;
+            margin-left: auto;
+            margin-right: auto;
+            width: 100%;
+        }
+/* Premium Banner Slider - Reduced Image Shining */
+.banner-slider {
+    position: relative;
+    height: 550px;
+    border-radius:5px;
+    overflow: hidden;
+    margin-bottom: 3rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    background: var(--gradient-dark);
+}
+
+.slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+    display: flex;
+    align-items: center;
+    padding: 0 8%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    transform: scale(1.05);
+    transition: all 1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.slide.active {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Balanced Corner Overlays */
+.slide::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+        /* Top left dark corner */
+        radial-gradient(circle at 0% 0%, rgba(0, 0, 0, 0.5) 0%, transparent 30%),
+        /* Top right dark corner */
+        radial-gradient(circle at 100% 0%, rgba(0, 0, 0, 0.5) 0%, transparent 30%),
+        /* Bottom left dark corner */
+        radial-gradient(circle at 0% 100%, rgba(0, 0, 0, 0.5) 0%, transparent 30%),
+        /* Bottom right dark corner */
+        radial-gradient(circle at 100% 100%, rgba(0, 0, 0, 0.5) 0%, transparent 30%),
+        /* Left side gradient */
+        linear-gradient(90deg, rgba(0, 0, 0, 0.4) 0%, transparent 60%),
+        /* Right side gradient */
+        linear-gradient(270deg, rgba(0, 0, 0, 0.4) 0%, transparent 60%),
+        /* Bottom gradient */
+        linear-gradient(0deg, rgba(0, 0, 0, 0.3) 0%, transparent 60%);
+    z-index: 1;
+}
+
+/* Reduced shining effect on images */
+.slide:nth-child(1) {
+    background-image: url('uploads/imgs/img1.jpg');
+    filter: saturate(1.1) contrast(1.1) brightness(1.05);
+    animation: slideZoom1 20s infinite alternate;
+}
+
+.slide:nth-child(2) {
+    background-image: url('uploads/imgs/img8.jpg');
+    filter: saturate(1.05) contrast(1.15) brightness(1.02);
+    animation: slideZoom2 20s infinite alternate;
+}
+
+
+.slide:nth-child(3) {
+    background-image: url('uploads/imgs/img10.jpg');
+    filter: saturate(1.08) contrast(1.1) brightness(1.03);
+    animation: slideZoom4 20s infinite alternate;
+}
+
+/* Subtle zoom animations without brightness changes */
+@keyframes slideZoom1 {
+    0% { transform: scale(1.05); }
+    100% { transform: scale(1.08); }
+}
+
+@keyframes slideZoom2 {
+    0% { transform: scale(1.05); }
+    100% { transform: scale(1.1); }
+}
+
+@keyframes slideZoom3 {
+    0% { transform: scale(1.05); }
+    100% { transform: scale(1.07); }
+}
+
+@keyframes slideZoom4 {
+    0% { transform: scale(1.05); }
+    100% { transform: scale(1.09); }
+}
+
+.slide.active {
+    animation-play-state: running;
+}
+
+.slide:not(.active) {
+    animation-play-state: paused;
+}
+
+/* Rest of your original content CSS remains unchanged */
+.slide-content {
+    max-width: 650px;
+    z-index: 2;
+    position: relative;
+    transform: translateX(-50px);
+    opacity: 0;
+    transition: all 0.8s ease 0.3s;
+}
+
+.slide.active .slide-content {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.slide-content-h2 {
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
+    color: #FFFFFF;
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: -1px;
+    text-shadow: 
+        3px 3px 15px rgba(0, 0, 0, 0.7),
+        0 0 30px rgba(255, 215, 0, 0.3);
+}
+
+.slide-content-h2 strong {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #D4AF37 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 900;
+    text-shadow: none;
+}
+
+.slide p {
+    font-size: 1.3rem;
+    margin-bottom: 2.5rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.95);
+    font-weight: 500;
+    text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+    position: relative;
+    padding-left: 1.5rem;
+}
+
+.slide p::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 80%;
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    border-radius: 2px;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.play-btn {
+    background: linear-gradient(135deg, #d6b603c2 0%, #d4af37e2 100%);
+    color: #2a2a2a;
+    border: none;
+    padding: 18px 45px;
+    font-size: 1.2rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 
+        0 8px 25px rgba(255, 215, 0, 0.4),
+        0 0 0 2px rgba(255, 215, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.play-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.6s ease;
+}
+
+.play-btn:hover {
+    background: linear-gradient(135deg, #FFA500 0%, #FFD700 100%);
+    transform: translateY(-4px);
+    box-shadow: 
+        0 12px 35px rgba(255, 215, 0, 0.6),
+        0 0 0 2px rgba(255, 215, 0, 0.3),
+        0 0 30px rgba(255, 215, 0, 0.4);
+}
+
+.play-btn:hover::before {
+    left: 100%;
+}
+
+.play-btn::after {
+    content: '🎯';
+    font-size: 1.3rem;
+    filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.slider-dots {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 15px;
+    z-index: 3;
+}
+
+.dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border: 2px solid transparent;
+    position: relative;
+    overflow: hidden;
+}
+
+.dot::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    transition: left 0.4s ease;
+}
+
+.dot.active {
+    transform: scale(1.4);
+    border-color: rgba(255, 215, 0, 0.8);
+    box-shadow: 
+        0 0 20px rgba(255, 215, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.dot.active::before {
+    left: 0;
+}
+
+.dot:hover:not(.active) {
+    background: rgba(255, 215, 0, 0.6);
+    transform: scale(1.2);
+}
+
+.banner-stats {
+    position: absolute;
+    top: 40px;
+    right: 50px;
+    z-index: 2;
+    display: flex;
+    gap: 2.5rem;
+    opacity: 0;
+    transform: translateX(50px);
+    transition: all 0.8s ease 0.5s;
+}
+
+.slide.active .banner-stats {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.stat-item {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(15px);
+    padding: 1.2rem 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    box-shadow: 
+        0 8px 25px rgba(0, 0, 0, 0.3),
+        0 0 15px rgba(255, 215, 0, 0.2);
+    transition: all 0.3s ease;
+    min-width: 120px;
+}
+
+.stat-item:hover {
+    transform: translateY(-5px);
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: 
+        0 12px 30px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #FFD700;
+    margin-bottom: 0.3rem;
+    text-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+    font-family: 'Courier New', monospace;
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 600;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.slider-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 2rem;
+    z-index: 3;
+}
+
+.nav-arrow {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    color: #FFD700;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.nav-arrow:hover {
+    background: rgba(255, 215, 0, 0.2);
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .banner-slider {
+        height: 450px;
+    }
+    
+    .slide-content-h2 {
+        font-size: 2.8rem;
+    }
+    
+    .slide p {
+        font-size: 1.1rem;
+    }
+    
+    .banner-stats {
+        top: 25px;
+        right: 25px;
+        gap: 1.5rem;
+    }
+    
+    .stat-item {
+        padding: 1rem 1.2rem;
+        min-width: 100px;
+    }
+    
+    .stat-value {
+        font-size: 1.5rem;
+    }
+    
+    .play-btn {
+        padding: 16px 35px;
+        font-size: 1.1rem;
+    }
+    
+    .slider-nav {
+        padding: 0 1rem;
+    }
+    
+    .nav-arrow {
+        width: 40px;
+        height: 40px;
+        font-size: 1.2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .banner-slider {
+        height: 400px;
+    }
+    
+    .slide-content-h2 {
+        font-size: 2.2rem;
+    }
+    
+    .slide p {
+        font-size: 1rem;
+        padding-left: 1rem;
+    }
+    
+    .play-btn {
+        padding: 14px 30px;
+        font-size: 1rem;
+    }
+    
+    .banner-stats {
+        position: relative;
+        top: auto;
+        right: auto;
+        justify-content: center;
+        margin-top: 2rem;
+        transform: none;
+    }
+    
+    .slider-dots {
+        bottom: 20px;
+    }
+    
+    .dot {
+        width: 12px;
+        height: 12px;
+    }
+}
+        /* Premium Section Headers */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            position: relative;
         }
 
-                    /* Banner Slider */
-            .banner-slider {
-                position: relative;
-                height: 400px;
-                border-radius: 15px;
-                overflow: hidden;
-                margin-bottom: 3rem;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            }
-
-            .slide {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                opacity: 0;
-                transition: opacity 1s ease;
-                display: flex;
-                align-items: center;
-                padding: 0 5%;
-                background-size: cover;
-                background-position: center;
-                background-repeat: no-repeat;
-            }
-
-            .slide.active {
-                opacity: 1;
-            }
-
-            .slide:nth-child(1) {
-                background-image: linear-gradient(to right, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.3)), url('https://images.unsplash.com/photo-1659382151328-30c3df37a69a?w=1200&auto=format&fit=crop&q=80&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MzR8fGJldHRpbmd8ZW58MHx8MHx8fDA%3D');
-            }
-
-            .slide:nth-child(2) {
-                background-image: linear-gradient(to right, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.3)), url('https://images.unsplash.com/photo-1542027953342-020384de63a0?w=1200&auto=format&fit=crop&q=80&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjZ8fGJldHRpbmd8ZW58MHx8MHx8fDA%3D');
-            }
-
-            .slide:nth-child(3) {
-                background-image: linear-gradient(to right, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.3)), url('https://plus.unsplash.com/premium_photo-1718826131603-2a5d9398c05a?w=700&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjIxfHxiZXR0aW5nfGVufDB8MHwwfHx8MA%3D%3D');
-            }
-
-            .slide-content {
-                max-width: 600px;
-                z-index: 2;
-                position: relative;
-            }
-
-            .slide h2 {
-                font-size: 3rem;
-                margin-bottom: 1rem;
-                text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
-            }
-
-            .slide p {
-                font-size: 1.2rem;
-                margin-bottom: 2rem;
-                text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
-            }
-
-            .play-btn {
-                background: linear-gradient(to right, var(--primary), var(--secondary));
-                color: white;
-                border: none;
-                padding: 12px 30px;
-                font-size: 1.1rem;
-                border-radius: 50px;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                box-shadow: 0 5px 15px rgba(255, 60, 126, 0.4);
-            }
-
-            .play-btn:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 8px 20px rgba(255, 60, 126, 0.6);
-            }
-
-            .slider-dots {
-                position: absolute;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                display: flex;
-                gap: 10px;
-                z-index: 3;
-            }
-
-            .dot {
-                width: 12px;
-                height: 12px;
-                border-radius: 50%;
-                background: rgba(255, 255, 255, 0.5);
-                cursor: pointer;
-                transition: all 0.3s ease;
-            }
-
-            .dot.active {
-                background: var(--primary);
-                transform: scale(1.2);
-            }
-
-        /* Games Section */
         .section-title {
-            font-size: 2rem;
-            margin-bottom: 2rem;
-            text-align: center;
+            font-size: 2.5rem;
             position: relative;
-            padding-bottom: 10px;
+            padding-bottom: 15px;
+            font-weight: 800;
+            color: var(--dark);
         }
 
         .section-title::after {
             content: '';
             position: absolute;
             bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 0;
             width: 100px;
-            height: 4px;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            border-radius: 2px;
+            height: 5px;
+            background: var(--gradient-primary);
+            border-radius: 3px;
+            box-shadow: 0 0 10px var(--primary);
         }
 
-        .games-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 25px;
-            margin-bottom: 4rem;
-        }
-
-        .game-card {
-            background: linear-gradient(145deg, #1e2044, #191a38);
-            border-radius: 15px;
-            overflow: hidden;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-            position: relative;
-        }
-
-        .game-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        .game-img {
-            height: 200px;
-            width: 100%;
-            background-size: cover;
-            background-position: center;
-        }
-
-        .game-content {
-            padding: 1.5rem;
-        }
-
-        .game-title {
-            font-size: 1.2rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .game-desc {
-            color: #b2bec3;
-            font-size: 0.9rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .game-btn {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-            font-weight: 500;
-        }
-
-        .game-btn:hover {
-            background: linear-gradient(to right, var(--secondary), var(--primary));
-        }
-
-    
-   
-   
-        .satta-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 25px;
-        margin-bottom: 4rem;
-    
-     }
-
-    .satta-card {
-        background: linear-gradient(145deg, #1e2044, #191a38);
-        border-radius: 15px;
-        overflow: hidden;
-        transition: all 0.3s ease;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    /* Premium Games Section - Vibrant Colorful Theme */
+    .games-section {
+        background: linear-gradient(135deg, #2a2a2a 0%, #3a3a3a 100%);
+        padding: 5rem 0;
         position: relative;
+        overflow: hidden;
     }
 
-    .satta-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 30px rgba(108, 92, 231, 0.3);
-    }
-    .satta-card a{
-      text-decoration: none;
-    }
-
-    .satta-img {
-        height: 160px;
+    .games-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
         width: 100%;
+        height: 100%;
+        background: 
+            radial-gradient(circle at 20% 20%, rgba(255, 107, 107, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(78, 205, 196, 0.05) 0%, transparent 50%);
+        z-index: 0;
+    }
+
+    .games-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 30px;
+        margin-bottom: 5rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .game-card {
+        background: linear-gradient(145deg, #3a3a3a, #2a2a2a);
+        border-radius: 20px;
+        overflow: hidden;
+        transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        position: relative;
+        border: 3px solid;
+        box-shadow: 
+            0 15px 35px rgba(0, 0, 0, 0.5),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+    }
+
+
+    .game-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+        opacity: 0;
+        transition: opacity 0.4s ease;
+        z-index: 1;
+    }
+
+    .game-card:hover {
+        transform: translateY(-10px) scale(1.03);
+        box-shadow: 
+            0 25px 50px rgba(0, 0, 0, 0.7),
+            0 0 40px currentColor;
+    }
+
+    .game-card:hover::before {
+        opacity: 1;
+    }
+
+    .game-img {
+        height: 280px;
+        width: 100%;
+        background: linear-gradient(135deg, var(--card-color, #667eea) 0%, var(--card-color-secondary, #764ba2) 100%);
         background-size: cover;
         background-position: center;
         position: relative;
+        transition: all 0.4s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+
+    .game-card:hover .game-img {
+        transform: scale(1.08);
+        filter: brightness(1.1) saturate(1.2);
+    }
+
+    .game-img::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 60%;
+        background: linear-gradient(to top, rgba(42, 42, 42, 0.95), transparent);
+    }
+
+    .game-icon {
+        font-size: 5rem;
+        color: white;
+        z-index: 2;
+        text-shadow: 
+            0 0 30px rgba(0, 0, 0, 0.8),
+            0 0 20px currentColor;
+        transition: all 0.4s ease;
+    }
+
+    .game-card:hover .game-icon {
+        transform: scale(1.15);
+        filter: brightness(1.3);
+    }
+
+    .game-content {
+        padding: 2rem;
+        position: relative;
+        z-index: 2;
+    }
+
+    .game-title {
+        font-size: 1.5rem;
+        margin-bottom: 0.8rem;
+        font-weight: 800;
+        color: #FFFFFF;
+        text-align: center;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        position: relative;
+    }
+
+
+    .game-title::after {
+        content: '';
+        position: absolute;
+        bottom: -8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 3px;
+        background: currentColor;
+        border-radius: 2px;
+        opacity: 0.7;
+    }
+
+    .game-desc {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.95rem;
+        margin-bottom: 2rem;
+        line-height: 1.6;
+        text-align: center;
+        font-weight: 400;
+    }
+
+    .game-btn {
+        background: linear-gradient(135deg, currentColor, var(--btn-color-secondary));
+        color: #1a1a1a;
+        border: none;
+        padding: 14px 30px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        width: 100%;
+        font-weight: 800;
+        box-shadow: 
+            0 6px 25px currentColor,
+            inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        position: relative;
+        overflow: hidden;
+        font-size: 1rem;
+    }
+
+
+    .game-btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+        transition: left 0.6s ease;
+    }
+
+    .game-btn:hover {
+        transform: translateY(-4px);
+        box-shadow: 
+            0 10px 30px currentColor,
+            inset 0 1px 0 rgba(255, 255, 255, 0.4),
+            0 0 20px currentColor;
+        color: #1a1a1a;
+    }
+
+    .game-btn:hover::before {
+        left: 100%;
+    }
+
+    /* Premium Satta Section - Colorful Theme */
+    .satta-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 25px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .satta-card {
+        background: linear-gradient(145deg, #3a3a3a, #2a2a2a);
+        border-radius:15px;
+        overflow: hidden;
+        width: 400px;
+        transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        position: relative;
+        border: 0.5px solid #FFD700;
+        box-shadow: 
+            0 15px 35px rgba(0, 0, 0, 0.5),
+            0 0 25px rgba(255, 215, 0, 0.3);
+        backdrop-filter: blur(10px);
+    }
+
+    .satta-card:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 
+            0 25px 50px rgba(0, 0, 0, 0.7),
+            0 0 35px rgba(255, 215, 0, 0.4);
+    }
+
+    .satta-img {
+        height: 270px;
+        width: 100%;
+        background: linear-gradient(135deg, #FFD700, #FFA500);
+        background-size: cover;
+        background-position: center;
+        position: relative;
+        transition: transform 0.4s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .satta-card:hover .satta-img {
+        transform: scale(1.05);
+        filter: brightness(1.1);
     }
 
     .satta-img::after {
@@ -399,726 +965,1896 @@ include 'includes/header.php';
         left: 0;
         width: 100%;
         height: 60%;
-        background: linear-gradient(to top, rgba(30, 32, 68, 0.9), transparent);
+        background: linear-gradient(to top, rgba(42, 42, 42, 0.9), transparent);
     }
 
     .satta-header {
-        padding: 1.2rem;
-        background: rgba(108, 92, 231, 0.1);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 1.1rem;
+        background: rgba(255, 215, 0, 0.1);
+        border-bottom: 1px solid rgba(255, 215, 0, 0.2);
         position: relative;
     }
 
     .satta-title {
-        font-size: 1.3rem;
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #f4b70eff;
         margin-bottom: 0.5rem;
-        color: var(--accent);
-        text-shadow: 0 0 5px rgba(0, 206, 201, 0.5);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        text-align: center;
     }
 
     .satta-result {
         display: flex;
         align-items: center;
-        gap: 5px;
-        font-size: 1.1rem;
-        color: var(--warning);
-        font-weight: 600;
-        letter-spacing: 2px;
+        justify-content: center;
+        gap: 8px;
+        font-size: 1.2rem;
+        color: #FFD700;
+        font-weight: 700;
+        letter-spacing: 1px;
+        font-family: 'Courier New', monospace;
     }
 
     .satta-body {
-        padding: 1.5rem;
+        padding: 1.8rem;
     }
 
     .satta-info {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
+        align-items: center;
+        margin-bottom: 1.2rem;
+        padding-bottom: 0.8rem;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .satta-info:last-child {
-        margin-bottom: 1.5rem;
+        margin-bottom: 0;
+        border-bottom: none;
     }
 
     .satta-label {
-        color: #b2bec3;
-        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 0.95rem;
+        font-weight: 500;
     }
 
     .satta-value {
-        font-weight: 500;
-        color: var(--primary);
+        font-weight: 700;
+        color: #f4b70eff;
+        font-size: 1.1rem;
     }
 
     .timer {
         font-family: 'Courier New', monospace;
-        background: rgba(0, 0, 0, 0.2);
-        padding: 3px 8px;
-        border-radius: 4px;
-        color: var(--warning);
+        background: rgba(255, 149, 0, 0.11);
+        padding: 8px 16px;
+        border-radius: 10px;
+        color: #fec815ff;
+        font-weight: 700;
+        border: 1px solid rgba(246, 196, 17, 0.49);
+        font-size: 1.2rem;
     }
 
-    /* Different card styles */
-    .satta-card:nth-child(1) {
-        background: linear-gradient(145deg, #2d1b35, #1d1135);
-        border-top: 3px solid #ff3c7e;
-    }
-    
-    .satta-card:nth-child(1) .satta-header {
-        background: rgba(255, 60, 126, 0.1);
-    }
-    
-    .satta-card:nth-child(6) {
-        background: linear-gradient(145deg, #1b3b5c, #0d2b4b);
-        border-top: 3px solid #0fb4c9;
-    }
-    
-    .satta-card:nth-child(6) .satta-header {
-        background: rgba(15, 180, 201, 0.1);
-    }
-    
-    .satta-card:nth-child(3) {
-        background: linear-gradient(145deg, #2c5530, #1c4220);
-        border-top: 3px solid #00b894;
-    }
-    
-    .satta-card:nth-child(3) .satta-header {
-        background: rgba(0, 184, 148, 0.1);
-    }
-    
-    .satta-card:nth-child(4) {
-        background: linear-gradient(145deg, #5c2b2b, #4b1d1d);
-        border-top: 3px solid #d63031;
-    }
-    
-    .satta-card:nth-child(4) .satta-header {
-        background: rgba(214, 48, 49, 0.1);
-    }
-    
-    .satta-card:nth-child(5) {
-        background: linear-gradient(145deg, #5c4b2b, #4b3a1d);
-        border-top: 3px solid #fdcb6e;
-    }
-    
-    .satta-card:nth-child(5) .satta-header {
-        background: rgba(253, 203, 110, 0.1);
-    }
-    
-    .satta-card:nth-child(2) {
-        background: linear-gradient(145deg, #2b5c5c, #1d4b4b);
-        border-top: 3px solid #00cec9;
-    }
-    
-    .satta-card:nth-child(2) .satta-header {
-        background: rgba(0, 206, 201, 0.1);
-    }
-        /* Card 7 - Purple & Pink */
-        .satta-card:nth-child(7) {
-            background: linear-gradient(145deg, #4a235a, #2f1b3a);
-            border-top: 3px solid #9b59b6;
-        }
-
-        .satta-card:nth-child(7) .satta-header {
-            background: rgba(155, 89, 182, 0.1);
-        }
-
-        /* Card 8 - Deep Blue & Teal */
-        .satta-card:nth-child(8) {
-            background: linear-gradient(145deg, #1a5276, #0f2d44);
-            border-top: 3px solid #3498db;
-        }
-
-        .satta-card:nth-child(8) .satta-header {
-            background: rgba(52, 152, 219, 0.1);
-        }
-
-        /* Card 9 - Emerald & Forest Green */
-        .satta-card:nth-child(9) {
-            background: linear-gradient(145deg, #186a3b, #0f4526);
-            border-top: 3px solid #27ae60;
-        }
-
-        .satta-card:nth-child(9) .satta-header {
-            background: rgba(39, 174, 96, 0.1);
-        }
-
-        /* Card 10 - Ruby & Crimson */
-        .satta-card:nth-child(10) {
-            background: linear-gradient(145deg, #7d3c98, #5e2a7a);
-            border-top: 3px solid #e74c3c;
-        }
-
-        .satta-card:nth-child(10) .satta-header {
-            background: rgba(231, 76, 60, 0.1);
-        }
-
-        /* Card 11 - Amber & Orange */
-        .satta-card:nth-child(11) {
-            background: linear-gradient(145deg, #b9770e, #8e5c0b);
-            border-top: 3px solid #f39c12;
-        }
-
-        .satta-card:nth-child(11) .satta-header {
-            background: rgba(243, 156, 18, 0.1);
-        }
-
-        /* Card 12 - Cyan & Sky Blue */
-        .satta-card:nth-child(12) {
-            background: linear-gradient(145deg, #117a65, #0b5545);
-            border-top: 3px solid #1abc9c;
-        }
-
-        .satta-card:nth-child(12) .satta-header {
-            background: rgba(26, 188, 156, 0.1);
-        }
-    /* Status badges */
+    /* Single Status Badge - Colorful Theme */
     .status-badge {
         position: absolute;
+        top: 20px;
+        right: 20px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        z-index: 2;
+        backdrop-filter: blur(10px);
+        border: 1px solid;
+        display:none;
+        letter-spacing: 0.5px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+
+
+    /* Enhanced Section Headers */
+    .section-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .section-title {
+        font-size: 3.5rem;
+        font-weight: 900;
+        background: linear-gradient(135deg, #FF6B6B, #4ECDC4, #FFD700, #9B59B6, #3498DB);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 1.0rem;
+        text-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+    }
+
+    .section-subtitle {
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 1.2rem;
+        max-width: 600px;
+        margin: 0 auto;
+        font-weight: 400;
+        line-height: 1.6;
+    }
+
+
+     /* Premium Footer - Betting Website */
+footer {
+    background: linear-gradient(135deg, #2a2a2a 0%, #3a3a3a 100%);
+    padding: 4rem 2rem 2rem;
+    margin-top: auto;
+    border-top: 3px solid;
+    border-image: linear-gradient(135deg, #FF6B6B, #4ECDC4, #FFD700, #9B59B6, #3498DB) 1;
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+}
+
+footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+        radial-gradient(circle at 20% 80%, rgba(255, 107, 107, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(78, 205, 196, 0.05) 0%, transparent 50%);
+    z-index: 0;
+}
+
+.footer-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 3rem;
+    flex-wrap: wrap;
+    gap: 3rem;
+}
+
+.footer-brand {
+    flex: 1;
+    min-width: 300px;
+}
+
+.footer-logo {
+    font-size: 2.5rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #FF6B6B, #4ECDC4, #FFD700, #9B59B6, #3498DB);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+}
+
+.footer-tagline {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 1.1rem;
+    line-height: 1.6;
+    max-width: 400px;
+}
+
+.footer-links-section {
+    display: flex;
+    gap: 4rem;
+    flex-wrap: wrap;
+}
+
+.footer-links-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.footer-links-group h4 {
+    color: #FFFFFF;
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.footer-links-group h4::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 40px;
+    height: 3px;
+    background: linear-gradient(135deg, #FF6B6B, #4ECDC4);
+    border-radius: 2px;
+}
+
+.footer-links {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.footer-links a {
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.footer-links a:hover {
+    color: #FFFFFF;
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(5px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.footer-links a::before {
+    content: '▶';
+    font-size: 0.7rem;
+    color: #FFD700;
+    transition: transform 0.3s ease;
+}
+
+.footer-links a:hover::before {
+    transform: translateX(3px);
+}
+
+/* Social Links Section */
+.footer-social {
+    flex: 1;
+    min-width: 300px;
+}
+
+.footer-social h4 {
+    color: #FFFFFF;
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.social-links {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.social-links a {
+    color: #FFFFFF;
+    font-size: 1.8rem;
+    transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.social-links a::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
+}
+
+.social-links a:hover {
+    transform: translateY(-8px) scale(1.1);
+    box-shadow: 
+        0 10px 25px rgba(0, 0, 0, 0.3),
+        0 0 20px currentColor;
+}
+
+.social-links a:hover::before {
+    left: 100%;
+}
+
+/* Social Platform Specific Colors */
+.social-links a:nth-child(1):hover { color: #1877F2; } /* Facebook */
+.social-links a:nth-child(2):hover { color: #1DA1F2; } /* Twitter */
+.social-links a:nth-child(3):hover { color: #E4405F; } /* Instagram */
+.social-links a:nth-child(4):hover { color: #25D366; } /* WhatsApp */
+.social-links a:nth-child(5):hover { color: #FF0000; } /* YouTube */
+
+/* Footer Bottom */
+.footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 2rem;
+    margin-top: 2rem;
+}
+
+.footer-disclaimer {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.copyright {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.copyright-links {
+    display: flex;
+    gap: 2rem;
+}
+
+.copyright-links a {
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: color 0.3s ease;
+    font-size: 0.85rem;
+}
+
+.copyright-links a:hover {
+    color: #FFD700;
+}
+
+/* Age Verification Badge */
+.age-verification {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+}
+
+.age-badge {
+    background: linear-gradient(135deg, #FF6B6B, #E74C3C);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+}
+
+/* Payment Methods */
+.payment-methods {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin: 2rem 0;
+    flex-wrap: wrap;
+}
+
+.payment-method {
+    width: 50px;
+    height: 30px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.payment-method:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .footer-content {
+        justify-content: center;
+        text-align: center;
+    }
+    
+    .footer-brand {
+        text-align: center;
+    }
+    
+    .footer-links-group h4::after {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+@media (max-width: 768px) {
+    footer {
+        padding: 3rem 1.5rem 1.5rem;
+    }
+    
+    .footer-content {
+        flex-direction: column;
+        align-items: center;
+        gap: 2rem;
+    }
+    
+    .footer-links-section {
+        gap: 2rem;
+        justify-content: center;
+    }
+    
+    .footer-links-group {
+        align-items: center;
+    }
+    
+    .footer-links a {
+        justify-content: center;
+    }
+    
+    .copyright {
+        flex-direction: column;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .copyright-links {
+        justify-content: center;
+    }
+    
+    .social-links a {
+        width: 50px;
+        height: 50px;
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 480px) {
+    footer {
+        padding: 2rem 1rem 1rem;
+    }
+    
+    .footer-logo {
+        font-size: 2rem;
+    }
+    
+    .footer-links-section {
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    
+    .social-links {
+        gap: 1rem;
+    }
+    
+    .social-links a {
+        width: 45px;
+        height: 45px;
+        font-size: 1.4rem;
+    }
+    
+    .payment-methods {
+        gap: 0.5rem;
+    }
+    
+    .payment-method {
+        width: 40px;
+        height: 25px;
+        font-size: 1rem;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    footer {
+        background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    .footer-links a,
+    .social-links a,
+    .payment-method {
+        transition: none;
+    }
+    
+    .footer-links a::before,
+    .social-links a::before {
+        transition: none;
+    }
+}
+ /* Premium Modal Styles - Refined Golden Theme */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(15px);
+    animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background: linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%);
+    margin: 3% auto;
+    padding: 0;
+    border-radius: 16px;
+    width: 95%;
+    max-width: 1000px;
+    box-shadow: 
+        0 20px 40px rgba(0, 0, 0, 0.8),
+        0 0 0 1px rgba(255, 140, 0, 0.3),
+        0 0 30px rgba(255, 140, 0, 0.2);
+    animation: slideInUp 0.5s ease-out;
+    position: relative;
+    overflow: hidden;
+    border: 0.5px solid #ffc400ff;
+}
+
+@keyframes slideInUp {
+    from { 
+        transform: translateY(50px) scale(0.98); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateY(0) scale(1); 
+        opacity: 1; 
+    }
+}
+
+.close-modal {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: #1a1a1a;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #eaff009e 0%, #FFd700 100%);
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(255, 140, 0, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.close-modal:hover {
+    background: linear-gradient(135deg, #545353e4 0%, #3e3e3d78 100%);
+    transform: rotate(90deg) scale(1.1);
+    box-shadow: 0 6px 20px rgba(255, 140, 0, 0.6);
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #ff8c00b3 0%, #ffa600cb 50%, #FF8C00 100%);
+    padding: 2.5rem 2.5rem 2rem;
+    color: #1a1a1a;
+    border-radius: 14px 14px 0 0;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 2px solid #FF8C00;
+}
+
+.modal-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+}
+
+.modal-game-title {
+    font-size: 2.8rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 800;
+    color: #1a1a1a;
+    position: relative;
+    z-index: 2;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.modal-game-time {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+    z-index: 2;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 6px 14px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.modal-game-time::before {
+    font-size: 1rem;
+}
+
+.modal-body {
+    padding: 2.5rem;
+    max-height: 65vh;
+    overflow-y: auto;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+    position: relative;
+}
+
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
+    border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+}
+
+/* Premium Bet Types Grid */
+.modal-bet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.modal-bet-card {
+    background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+    border-radius: 12px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 0.5px solid #ffd700;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 
+        0 8px 25px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 140, 0, 0.1);
+}
+
+.modal-bet-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.08), transparent);
+    transition: left 0.5s ease;
+}
+
+.modal-bet-card:hover::before {
+    left: 100%;
+}
+
+.modal-bet-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 
+        0 12px 30px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 140, 0, 0.3);
+    border-color: #FFA500;
+}
+
+.modal-bet-icon {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+    display: block;
+    transition: all 0.3s ease;
+    position: relative;
+    z-index: 2;
+    color: #FFA500;
+    text-shadow: 0 0 10px rgba(255, 140, 0, 0.3);
+}
+
+.modal-bet-card:hover .modal-bet-icon {
+    transform: scale(1.1);
+    color: #FF8C00;
+}
+
+.modal-bet-title {
+    font-size: 1.4rem;
+    margin-bottom: 0.8rem;
+    font-weight: 700;
+    font-family: "Space Grotesk",;
+    transition: all 0.3s ease;
+    position: relative;
+    z-index: 2;
+    color: #ffd700;
+}
+
+.modal-bet-card:hover .modal-bet-title {
+    color: #FF8C00;
+}
+
+.modal-bet-desc {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+    position: relative;
+    z-index: 2;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Professional Payout Section */
+.modal-bet-payout {
+    font-size: 1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, rgba(255, 140, 0, 0.15) 0%, rgba(255, 140, 0, 0.05) 100%);
+    padding: 10px 20px;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid rgba(255, 140, 0, 0.3);
+    margin-bottom: 1.5rem;
+    position: relative;
+    z-index: 2;
+    color: #FFA500;
+}
+
+.payout-icon {
+    font-size: 1rem;
+}
+
+.payout-value {
+    font-family: 'Courier New', monospace;
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: #FF8C00;
+}
+
+.modal-bet-btn {
+    background: linear-gradient(135deg, #ffd000f4 0%, #ffcc00fe 100%);
+    color: #1a1a1a;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 700;
+    width: 100%;
+    box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 1.23rem;
+    font-weight: 700;
+    position: relative;
+    z-index: 2;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    overflow: hidden;
+}
+
+.modal-bet-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.modal-bet-btn:hover {
+    background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 140, 0, 0.4);
+}
+
+.modal-bet-btn:hover::before {
+    left: 100%;
+}
+
+/* Section Title in Modal */
+.modal-body .section-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #FFA500;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    position: relative;
+    padding-bottom: 12px;
+}
+
+.modal-body .section-title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(135deg, #FF8C00, #FFA500);
+    border-radius: 2px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .modal {
+        padding: 10px;
+    }
+    
+    .modal-content {
+        margin: 2% auto;
+        width: 98%;
+        border-radius: 12px;
+    }
+    
+    .modal-header {
+        padding: 2rem 1.5rem 1.5rem;
+    }
+    
+    .modal-game-title {
+        font-size: 2rem;
+        letter-spacing: 1px;
+    }
+    
+    .modal-game-time {
+        font-size: 1rem;
+        padding: 5px 12px;
+    }
+    
+    .modal-body {
+        padding: 2rem 1.5rem;
+        max-height: 70vh;
+    }
+    
+    .modal-bet-grid {
+        grid-template-columns: 1fr;
+        gap: 1.2rem;
+        margin-top: 1.5rem;
+    }
+    
+    .modal-bet-card {
+        padding: 1.5rem 1.2rem;
+    }
+    
+    .modal-bet-icon {
+        font-size: 3rem;
+        margin-bottom: 0.8rem;
+    }
+    
+    .modal-bet-title {
+        font-size: 1.2rem;
+        margin-bottom: 0.6rem;
+    }
+    
+    .modal-bet-desc {
+        font-size: 0.85rem;
+        margin-bottom: 1.2rem;
+        min-height: 35px;
+    }
+    
+    .modal-bet-payout {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+        margin-bottom: 1.2rem;
+    }
+    
+    .payout-value {
+        font-size: 1rem;
+    }
+    
+    .close-modal {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
         top: 15px;
         right: 15px;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        text-transform: uppercase;
     }
     
-    .status-open {
-        background: var(--success);
-        color: white;
+    .modal-body .section-title {
+        font-size: 1.8rem;
+        padding-bottom: 10px;
     }
     
-    .status-closed {
-        background: var(--danger);
-        color: white;
+    .modal-body .section-title::after {
+        width: 60px;
+        height: 2px;
     }
     
-    .status-coming {
-        background: var(--warning);
-        color: black;
+    .modal-bet-btn {
+           padding: 10px 15px;
+        font-size: 0.65rem;
     }
+}
 
-    @media (max-width: 1024px) {
+@media (max-width: 480px) {
+    .modal-header {
+        padding: 1.5rem 1rem 1rem;
+    }
+    
+    .modal-game-title {
+        font-size: 1.6rem;
+    }
+    
+    .modal-body {
+        padding: 1.5rem 1rem;
+    }
+    
+    .modal-bet-card {
+        padding: 1.2rem 1rem;
+    }
+    
+    .modal-bet-icon {
+        font-size: 2.5rem;
+    }
+    
+    .modal-bet-title {
+        font-size: 1.1rem;
+    }
+    
+    .modal-bet-desc {
+        font-size: 0.8rem;
+        min-height: 32px;
+    }
+    
+    .modal-bet-payout {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+    }
+    
+    .payout-value {
+        font-size: 0.9rem;
+    }
+    
+    .modal-bet-btn {
+        padding: 5px 15px;
+        font-size: 0.65rem;
+    }
+    
+    .modal-body .section-title {
+        font-size: 1.5rem;
+    }
+}
+
+/* Small Mobile Devices */
+@media (max-width: 360px) {
+    .modal-header {
+        padding: 1.2rem 0.8rem 0.8rem;
+    }
+    
+    .modal-game-title {
+        font-size: 1.4rem;
+    }
+    
+    .modal-body {
+        padding: 1.2rem 0.8rem;
+    }
+    
+    .modal-bet-card {
+        padding: 1rem 0.8rem;
+    }
+    
+    .modal-bet-grid {
+        gap: 1rem;
+    }
+}
+
+/* Landscape Mobile Optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+    .modal-content {
+        margin: 1% auto;
+        max-height: 98vh;
+    }
+    
+    .modal-body {
+        max-height: 55vh;
+        padding: 1.5rem;
+    }
+    
+    .modal-bet-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+    
+    .modal-bet-card {
+        padding: 1.2rem 1rem;
+    }
+}
+
+/* Touch Device Optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .modal-bet-card:hover {
+        transform: none;
+    }
+    
+    .modal-bet-card:active {
+        transform: scale(0.98);
+    }
+    
+    .modal-bet-btn:hover {
+        transform: none;
+    }
+    
+    .modal-bet-btn:active {
+        transform: scale(0.95);
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    .modal,
+    .modal-content,
+    .modal-bet-card,
+    .modal-bet-btn {
+        animation: none;
+        transition: none;
+    }
+}
+    </style>
+
+<!-- cards responsive -->
+<style>
+    /* Enhanced Mobile Responsiveness for Cards & Modals */
+    
+    /* Base Mobile Responsive Grid */
+    @media (max-width: 1200px) {
+        .games-grid {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+        }
+        
         .satta-grid {
             grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+        }
+        
+        .modal-bet-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
         }
     }
 
-    @media (max-width: 576px) {
+    @media (max-width: 992px) {
+        .games-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        .satta-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        .modal-bet-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.2rem;
+        }
+        
+        .game-card, .satta-card {
+            margin-bottom: 15px;
+        }
+        
+        .section-title {
+            font-size: 2.2rem;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .games-grid {
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-bottom: 3rem;
+        }
+        
         .satta-grid {
             grid-template-columns: 1fr;
+            gap: 15px;
+            margin-bottom: 3rem;
         }
-    }
-
-        /* Footer */
-        footer {
-            background: #0c0f1c;
-            padding: 3rem 2rem 1.5rem;
+        
+        /* MODAL GAMES - 2 COLUMNS FOR MOBILE */
+        .modal-bet-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+        
+        .modal-bet-card {
+            min-height: 120px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        
+        .modal-bet-icon {
+            font-size: 1.8rem;
+            margin-bottom: 0.6rem;
+        }
+        
+        .modal-bet-title {
+            font-size: 0.95rem;
+            margin-bottom: 0.4rem;
+            line-height: 1.2;
+        }
+        
+        .modal-bet-desc {
+            font-size: 0.75rem;
+            margin-bottom: 0.8rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .modal-bet-btn {
+            padding: 4px 8px;
+            font-size: 1rem;
+            width: 88%;
             margin-top: auto;
         }
-
-        .footer-content {
+        
+        /* Enhanced Mobile Card Layout */
+        .game-card, .satta-card {
+            min-height: 120px;
+            margin-bottom: 12px;
+            border-radius: 12px;
+        }
+        
+        /* Mobile Game Cards - Horizontal Layout */
+        .game-card {
+            display: flex;
+            flex-direction: row;
+            height: auto;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        .game-img {
+            width: 120px;
+            height: 120px;
+            min-width: 120px;
+            border-radius: 12px 0 0 12px;
+        }
+        
+        .game-img::after {
+            border-radius: 12px 0 0 12px;
+        }
+        
+        .game-content {
+            padding: 1rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .game-title {
+            font-size: 1.1rem !important;
+            margin-bottom: 0.5rem;
+            line-height: 1.3;
+        }
+        
+        .game-desc {
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .game-btn {
+            padding: 8px 16px;
+            font-size: 0.85rem !important;
+            width: auto;
+            align-self: flex-start;
+            min-width: 100px;
+        }
+        
+        /* Mobile Satta Cards - Compact Layout */
+        .satta-card {
+            display: flex;
+            flex-direction: row;
+            height: auto;
+            padding: 0;
+        }
+        
+        .satta-img {
+            display: none;
+        }
+        
+        .satta-header {
+            flex: 0 0 140px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border-right: 2px solid rgba(255, 255, 255, 0.15);
+            border-bottom: none;
+        }
+        
+        .satta-title {
+            font-size: 1rem !important;
+            margin-bottom: 0.4rem;
+            line-height: 1.2;
+        }
+        
+        .satta-result {
+            font-size: 0.9rem !important;
+            letter-spacing: 1px;
+        }
+        
+        .satta-body {
+            flex: 1;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .satta-info {
+            margin-bottom: 0.6rem;
+            padding-bottom: 0.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
-        }
-
-        .social-links {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .social-links a {
-            color: var(--light);
-            font-size: 1.5rem;
-            transition: all 0.3s ease;
-        }
-
-        .social-links a:hover {
-            color: var(--primary);
-            transform: translateY(-3px);
-        }
-
-        .footer-links {
-            display: flex;
-            gap: 2rem;
-        }
-
-        .footer-links a {
-            color: #b2bec3;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-
-        .footer-links a:hover {
-            color: var(--primary);
-        }
-
-        .copyright {
-            text-align: center;
-            color: #636e72;
-            padding-top: 1.5rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        /* Responsive Design */
-        @media (max-width: 1024px) {
-            .games-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            
-            .satta-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        @media (max-width: 768px) {
-            header {
-                padding: 1rem;
-            }
-            
-            nav ul {
-                position: fixed;
-                top: 80px;
-                left: -100%;
-                width: 100%;
-                height: calc(100vh - 80px);
-                background: rgba(26, 26, 46, 0.98);
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 3rem;
-                transition: left 0.3s ease;
-            }
-            
-            nav ul.active {
-                left: 0;
-            }
-            
-            .hamburger {
-                display: flex;
-            }
-            
-            .hamburger.active span:nth-child(1) {
-                transform: rotate(45deg) translate(5px, 5px);
-            }
-            
-            .hamburger.active span:nth-child(2) {
-                opacity: 0;
-            }
-            
-            .hamburger.active span:nth-child(3) {
-                transform: rotate(-45deg) translate(7px, -6px);
-            }
-            
-            .slide h2 {
-                font-size: 2rem;
-            }
-            
-            .slide p {
-                font-size: 1rem;
-            }
-            
-            .user-info {
-                display: none;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .games-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .satta-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .footer-content {
-                flex-direction: column;
-                gap: 1.5rem;
-            }
-            
-            .footer-links {
-                flex-direction: column;
-                gap: 1rem;
-                text-align: center;
-            }
-            
-            .banner-slider {
-                height: 350px;
-            }
-        }
-          /* Modal Styles */
-    .modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        background-color: rgba(0, 0, 0, 0.8);
-        backdrop-filter: blur(5px);
-        animation: fadeIn 0.3s ease;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-
-    .modal-content {
-        background: linear-gradient(145deg, #1e2044, #191a38);
-        margin: 5% auto;
-        padding: 0;
-        border-radius: 15px;
-        width: 90%;
-        max-width: 1000px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        animation: slideIn 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-
-    @keyframes slideIn {
-        from { transform: translateY(-50px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-
-    .close-modal {
-        position: absolute;
-        top: 15px;
-        right: 20px;
-        color: #fff;
-        font-size: 28px;
-        font-weight: bold;
-        cursor: pointer;
-        z-index: 10;
-        transition: all 0.3s ease;
-        background: rgba(255, 60, 126, 0.7);
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .close-modal:hover {
-        background: var(--primary);
-        transform: rotate(90deg);
-    }
-
-    .modal-header {
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        padding: 1.5rem 2rem;
-        color: white;
-        border-radius: 15px 15px 0 0;
-    }
-
-    .modal-game-title {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    .modal-game-time {
-        font-size: 1.1rem;
-        opacity: 0.9;
-    }
-
-    .modal-body {
-        padding: 2rem;
-        max-height: 70vh;
-        overflow-y: auto;
-    }
-
-    /* Bet Types Grid in Modal */
-    .modal-bet-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
-        margin-top: 1.5rem;
-    }
-
-    .modal-bet-card {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
-        padding: 1.5rem;
-        text-align: center;
-        transition: all 0.3s ease;
-        cursor: pointer;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .modal-bet-card:hover {
-        transform: translateY(-5px);
-        background: rgba(255, 255, 255, 0.1);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        border-color: var(--primary);
-    }
-
-    .modal-bet-icon {
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
-        display: block;
-    }
-
-    .modal-bet-title {
-        font-size: 1.2rem;
-        margin-bottom: 0.5rem;
-        color: var(--accent);
-    }
-
-    .modal-bet-desc {
-        font-size: 0.9rem;
-        color: #b2bec3;
-        margin-bottom: 1rem;
-    }
-
-    .modal-bet-btn {
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        color: white;
-        border: none;
-        padding: 8px 20px;
-        border-radius: 50px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-weight: 500;
-        width: 100%;
-    }
-
-    .modal-bet-btn:hover {
-        background: linear-gradient(to right, var(--secondary), var(--primary));
-        transform: scale(1.05);
-    }
-
-    /* Responsive Modal */
-    @media (max-width: 768px) {
-        .modal-content {
-            width: 95%;
-            margin: 10% auto;
         }
         
-        .modal-bet-grid {
-            grid-template-columns: repeat(2, 1fr);
+        .satta-label {
+            font-size: 0.8rem;
+            min-width: 70px;
         }
-    }
-
-    @media (max-width: 576px) {
-        .modal-bet-grid {
-            grid-template-columns: 1fr;
+        
+        .satta-value {
+            font-size: 0.9rem !important;
+            text-align: right;
+        }
+        
+        .timer {
+            font-size: 0.85rem !important;
+            padding: 5px 10px;
+        }
+        
+        /* Mobile Status Badges */
+        .status-badge {
+            top: 10px;
+            right: 10px;
+            font-size: 0.6rem !important;
+            padding: 4px 10px;
+        }
+        
+        /* Section Headers Mobile */
+        .section-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .section-title {
+            font-size: 1.8rem;
+            padding-bottom: 8px;
+        }
+        
+        .section-title::after {
+            width: 60px;
+            height: 3px;
+        }
+        
+        .view-all {
+            align-self: flex-end;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+        
+        /* Main Content Mobile */
+        main {
+            padding: 1.5rem 1rem;
+            margin-top: 70px;
+        }
+        
+        /* Banner Slider Mobile */
+        .banner-slider {
+            height: 300px;
+            margin-bottom: 2.5rem;
+            border-radius: 12px;
+        }
+        
+        .slide h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .slide p {
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .play-btn {
+            padding: 12px 25px;
+            font-size: 1rem;
+        }
+        
+        .slider-dots {
+            bottom: 15px;
+        }
+        
+        .dot {
+            width: 10px;
+            height: 10px;
+        }
+        
+        /* Enhanced Mobile Modal Responsiveness */
+        .modal-content {
+            width: 95%;
+            margin: 2% auto;
+            border-radius: 12px;
         }
         
         .modal-header {
-            padding: 1rem;
+            padding: 1.2rem;
         }
         
         .modal-game-title {
             font-size: 1.5rem;
         }
-    }
-    .modal-bet-payout {
-    font-size: 0.8rem;
-    color: var(--warning);
-    margin-bottom: 1rem;
-    font-weight: 600;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 3px 8px;
-    border-radius: 4px;
-    display: inline-block;
- }
-
-  /* Mobile-only responsive styles - FIXED VERSION */ 
- @media (max-width: 768px) {
-    /* Updated Satta Grid for Mobile - Rectangle Cards */
-    .satta-grid {
-        grid-template-columns: 1fr;
-        gap: 15px;
-    }
-
-    .satta-card {
-        height: auto; /* Let content determine height */
-        min-height: 120px;
-        display: flex;
-        flex-direction: row;
-        padding: 0;
-        overflow: hidden;
+        
+        .modal-game-time {
+            font-size: 1rem;
+        }
+        
+        .modal-body {
+            padding: 1.2rem;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .close-modal {
+            width: 35px;
+            height: 35px;
+            font-size: 24px;
+            top: 10px;
+            right: 15px;
+        }
     }
 
-    .satta-img {
-        display: none; /* Hide image on mobile */
+    @media (max-width: 576px) {
+        /* Extra Small Mobile Devices */
+        .games-grid,
+        .satta-grid {
+            gap: 3px;
+        }
+        
+        /* MODAL GAMES - ADJUSTED FOR SMALLER SCREENS */
+        .modal-bet-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.8rem;
+        }
+        
+        .modal-bet-card {
+            min-height: 110px;
+            padding: 0.8rem;
+        }
+        
+        .modal-bet-icon {
+            font-size: 1.6rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .modal-bet-title {
+            font-size: 1.3rem;
+        }
+        
+        .modal-bet-desc {
+            font-size: 0.7rem;
+            -webkit-line-clamp: 2;
+        }
+        
+        .modal-bet-btn {
+            padding: 2px 4px;
+            font-size: 1rem;
+        }
+        
+        .game-card,
+        .satta-card {
+            min-height: 110px;
+            border-radius: 10px;
+        }
+        
+        .game-img {
+            width: 100px;
+            height: 100px;
+            min-width: 100px;
+        }
+        
+        .game-content {
+            padding: 0.8rem;
+        }
+        
+        .game-title {
+            font-size: 1rem !important;
+        }
+        
+        .game-desc {
+            font-size: 0.8rem;
+            -webkit-line-clamp: 2;
+        }
+        
+        .game-btn {
+            padding: 6px 12px;
+            font-size: 0.8rem !important;
+            min-width: 90px;
+        }
+        
+        .satta-header {
+            flex: 0 0 120px;
+            padding: 0.8rem;
+        }
+        
+        .satta-body {
+            padding: 0.8rem;
+        }
+        
+        .satta-title {
+            font-size: 0.95rem !important;
+        }
+        
+        .satta-info {
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.2rem;
+        }
+        
+        .satta-label {
+            font-size: 0.75rem;
+            min-width: 60px;
+        }
+        
+        .satta-value {
+            font-size: 0.85rem !important;
+        }
+        
+        .section-title {
+            font-size: 1.6rem;
+        }
+        
+        .banner-slider {
+            height: 250px;
+        }
+        
+        .slide h2 {
+            font-size: 1.8rem;
+        }
+        
+        main {
+            padding: 1rem 0.8rem;
+        }
     }
 
-    .satta-header {
-        flex: 1;
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-        min-width: 120px; /* Ensure enough space for game title */
+    @media (max-width: 400px) {
+        /* Very Small Mobile Devices */
+        /* MODAL GAMES - COMPACT 2 COLUMN LAYOUT */
+        .modal-bet-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.6rem;
+        }
+        
+        .modal-bet-card {
+            min-height: 100px;
+            padding: 0.7rem;
+        }
+        
+        .modal-bet-icon {
+            font-size: 1.4rem;
+            margin-bottom: 0.4rem;
+        }
+        
+        .modal-bet-title {
+            font-size: 1rem;
+            margin-bottom: 0.3rem;
+        }
+        
+        .modal-bet-desc {
+            font-size: 0.65rem;
+            -webkit-line-clamp: 2;
+            margin-bottom: 0.6rem;
+        }
+        
+        .modal-bet-btn {
+            padding: 1px 4px;
+            font-size: 0.8rem;
+        }
+        
+        .game-img {
+            width: 90px;
+            height: 90px;
+            min-width: 90px;
+        }
+        
+        .game-content {
+            padding: 0.7rem;
+        }
+        
+        .satta-header {
+            flex: 0 0 110px;
+            padding: 0.7rem;
+        }
+        
+        .satta-body {
+            padding: 0.7rem;
+        }
+        
+        .game-title,
+        .satta-title {
+            font-size: 0.95rem !important;
+        }
+        
+        .game-desc {
+            font-size: 0.75rem;
+            -webkit-line-clamp: 2;
+        }
     }
 
-    .satta-title {
-        font-size: 1rem;
-        margin-bottom: 0.3rem;
-        line-height: 1.2;
+    /* Touch Device Optimizations */
+    @media (hover: none) and (pointer: coarse) {
+        .game-card:hover,
+        .satta-card:hover,
+        .modal-bet-card:hover {
+            transform: none !important;
+        }
+        
+        .game-card:active,
+        .satta-card:active,
+        .modal-bet-card:active {
+            transform: scale(0.98) !important;
+            transition: transform 0.1s ease;
+        }
+        
+        .game-btn:active,
+        .play-btn:active,
+        .modal-bet-btn:active {
+            transform: scale(0.95) !important;
+        }
+        
+        /* Larger touch targets */
+        .game-btn,
+        .play-btn,
+        .view-all,
+        .modal-bet-btn {
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dot {
+            width: 14px;
+            height: 14px;
+        }
+        
+        .modal-bet-card {
+            cursor: pointer;
+        }
     }
 
-    .satta-result {
-        font-size: 0.8rem;
+    /* Landscape Mobile Optimizations */
+    @media (max-width: 768px) and (orientation: landscape) {
+        .games-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .satta-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        /* MODAL GAMES - 3 COLUMNS IN LANDSCAPE */
+        .modal-bet-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        
+        .game-card,
+        .satta-card {
+            min-height: 100px;
+        }
+        
+        .game-img {
+            width: 100px;
+            height: 100px;
+        }
+        
+        .banner-slider {
+            height: 200px;
+        }
     }
 
-    .satta-body {
-        flex: 2;
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+    /* High DPI Mobile Screens */
+    @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        .game-card,
+        .satta-card,
+        .modal-bet-card {
+            border-width: 0.5px;
+        }
+        
+        .status-badge,
+        .timer {
+            border-width: 1px;
+        }
     }
 
-    .satta-info {
-        margin-bottom: 0.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        width: 100%;
+    /* Reduced Motion Support */
+    @media (prefers-reduced-motion: reduce) {
+        .game-card,
+        .satta-card,
+        .modal-bet-card,
+        .game-btn,
+        .play-btn,
+        .modal-bet-btn {
+            transition: none !important;
+            animation: none !important;
+        }
+        
+        .bg-element {
+            animation: none !important;
+        }
     }
 
-    .satta-label {
-        font-size: 0.8rem;
-        min-width: 70px;
+    /* Dark Mode Support */
+    @media (prefers-color-scheme: dark) {
+        .game-card,
+        .satta-card,
+        .modal-bet-card {
+        }
     }
 
-    .satta-value {
-        font-size: 0.9rem;
-        text-align: right;
+    /* Print Styles */
+    @media print {
+        .game-card,
+        .satta-card,
+        .modal-bet-card {
+            break-inside: avoid;
+            box-shadow: none !important;
+            border: 1px solid #000 !important;
+        }
+        
+        .game-btn,
+        .play-btn,
+        .modal-bet-btn {
+            display: none;
+        }
     }
 
-    .game-btn {
-        padding: 8px 15px;
-        font-size: 0.9rem;
-        margin: 2px 50px;
-        align-self: flex-end;
-        width: auto;
-        min-width: 100px;
+    /* Mobile Footer Optimization */
+    @media (max-width: 768px) {
+        footer {
+            padding: 2rem 1rem 1rem;
+        }
+        
+        .footer-content {
+            flex-direction: column;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .footer-links {
+            flex-direction: column;
+            gap: 0.8rem;
+            text-align: center;
+        }
+        
+        .social-links {
+            justify-content: center;
+        }
+        
+        .social-links a {
+            width: 40px;
+            height: 40px;
+            font-size: 1.4rem;
+        }
     }
 
-    .status-badge {
-        top: 10px;
-        right: 20px;
-        font-size: 0.6rem;
-        padding: 3px 8px;
+    /* Smooth Mobile Scrolling */
+    @media (max-width: 768px) {
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        .games-grid,
+        .satta-grid {
+            scroll-margin-top: 80px;
+        }
+        
+        .modal-body {
+            scroll-margin-top: 20px;
+        }
     }
 
-    /* Ensure all satta-info elements are visible */
-    .satta-info:nth-child(1),
-    .satta-info:nth-child(2) {
-        display: flex !important;
+    /* Modal Games Specific Mobile Styles */
+    @media (max-width: 768px) {
+        .modal-games-container {
+            padding: 0.5rem;
+        }
+        
+        .modal-game-header {
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .modal-game-stats {
+            flex-direction: column;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .modal-game-stat {
+            flex: 1;
+            text-align: center;
+            padding: 0.8rem;
+        }
+        
+        .modal-game-stat-value {
+            font-size: 1.2rem;
+        }
+        
+        .modal-game-stat-label {
+            font-size: 0.8rem;
+        }
     }
 
-    /* Updated Modal for Mobile - Two game types per row */
-    .modal-bet-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1rem;
-    }
-
-    .modal-bet-card {
-        padding: 1rem;
-        min-height: 120px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-
-    .modal-bet-icon {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .modal-bet-title {
-        font-size: 1rem;
-        margin-bottom: 0.3rem;
-    }
-
-    .modal-bet-desc {
-        font-size: 0.8rem;
-        margin-bottom: 0.5rem;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        flex-grow: 1;
-    }
-
-    .modal-bet-btn {
-        padding: 6px 15px;
-        font-size: 0.9rem;
-    }
-
-    .modal-bet-payout {
-        font-size: 0.7rem;
-        margin-bottom: 0.5rem;
-    }
-
-    /* Adjust modal header for mobile */
-    .modal-header {
-        padding: 1rem;
-    }
-
-    .modal-game-title {
-        font-size: 1.5rem;
-    }
-
-    .modal-game-time {
-        font-size: 1rem;
-    }
-  }
-
-  /* Keep existing desktop styles for larger screens */
-   @media (min-width: 769px) {
-    .satta-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 25px;
+    /* Very Small Screen Modal Adjustments */
+    @media (max-width: 360px) {
+        .modal-bet-grid {
+            grid-template-columns: 1fr;
+            gap: 0.8rem;
+        }
+        
+        .modal-bet-card {
+            min-height: 90px;
+            flex-direction: row;
+            text-align: left;
+            padding: 0.8rem;
+        }
+        
+        .modal-bet-icon {
+            margin-right: 0.8rem;
+            margin-bottom: 0;
+            font-size: 1.6rem;
+            min-width: 40px;
+        }
+        
+        .modal-bet-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-bet-btn {
+            width: auto;
+            
+            min-width: 80px;
+            margin-top: 0;
+            align-self: flex-start;
+        }
     }
     
-    .modal-bet-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
-    }
-    
-    /* Reset mobile styles for desktop */
-    .satta-card {
-        display: block;
-        height: auto;
-    }
-    
-    .satta-img {
-        display: block;
-    }
-    
-    .satta-header {
-        border-right: none;
-        min-width: auto;
-    }
-    
-    .satta-body {
-        display: block;
-    }
-    
-    .satta-info {
-        display: flex;
-        justify-content: space-between;
-    }
- }
- 
+            /* Mobile Responsive */
+            @media (max-width: 768px) {
+                .banner-slider {
+                    height: 600px;
+                    margin-bottom: 3rem;
+                }
+                
+                .slide {
+                    padding: 0 1.5rem;
+                }
+                
+                .slide-content-h2 {
+                    font-size: 2.8rem;
+                }
+                
+                .slide p {
+                    font-size: 1.1rem;
+                    padding-left: 1rem;
+                }
+                
+                .play-btn {
+                    padding: 16px 35px;
+                    font-size: 1.1rem;
+                }
+                
+                .banner-stats {
+                    top: 20px;
+                    right: 20px;
+                    gap: 1rem;
+                }
+                
+                .stat-item {
+                    padding: 0.8rem 1rem;
+                }
+                
+                .stat-value {
+                    font-size: 1.5rem;
+                }
+                
+                .slider-dots {
+                    bottom: 20px;
+                }
+            }
+
+            @media (max-width: 480px) {
+                .banner-slider {
+                    height: 350px;
+                }
+                
+                .slide-content-h2 {
+                    font-size: 2.2rem;
+                }
+                
+                .slide p {
+                    font-size: 1rem;
+                }
+                
+                .play-btn {
+                    padding: 14px 30px;
+                    font-size: 1rem;
+                }
+                
+                .banner-stats {
+                    display: none;
+                }
+            }
+
 </style>
 
 
@@ -1129,25 +2865,26 @@ include 'includes/header.php';
             <section class="banner-slider">
                 <div class="slide active">
                     <div class="slide-content">
-                        <h2>Win Big with RB Games</h2>
+                        <h2 class='slide-content-h2'>Win Big with RB Games</h2>
                         <p>Experience the thrill of betting with the most trusted platform. Join now and get 100% bonus on your first deposit!</p>
                         <button class="play-btn">Play Now</button>
                     </div>
                 </div>
                 <div class="slide">
                     <div class="slide-content">
-                        <h2>Live Betting Action</h2>
+                        <h2 class='slide-content-h2'>Live Betting Action</h2>
                         <p>Place your bets in real-time with our live betting feature. Exciting matches, incredible odds!</p>
                         <button class="play-btn">Join Now</button>
                     </div>
                 </div>
                 <div class="slide">
                     <div class="slide-content">
-                        <h2>Daily Jackpots</h2>
+                        <h2 class='slide-content-h2'>Daily Jackpots</h2>
                         <p>Massive jackpots waiting to be won. Your next bet could change your life forever!</p>
                         <button class="play-btn">Try Luck</button>
                     </div>
                 </div>
+                  
                 <div class="slider-dots">
                     <div class="dot active" data-slide="0"></div>
                     <div class="dot" data-slide="1"></div>
@@ -1157,7 +2894,6 @@ include 'includes/header.php';
 
        
 
-        <!-- Satta Matka Lobby -->
 <!-- Satta Matka Lobby -->
 <section class="satta-lobby">
     <h2 class="section-title">Satta Matka Lobby</h2>
@@ -1172,13 +2908,14 @@ include 'includes/header.php';
                 "void(0)";
         ?>
         <div class="satta-card" onclick="<?php echo $onclick; ?>" style="<?php echo $is_closed ? 'opacity: 0.7; cursor: not-allowed;' : ''; ?>">
-            <div class="satta-img" style="background-image: url('https://images.unsplash.com/photo-1542744095-fcf48d80b0fd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80');"></div>
+            <!-- Updated image section -->
+            <div class="satta-img" style="background-image: url('<?php echo $game_info['image']; ?>');">
+                <?php if (!file_exists($game_info['image']) || $game_info['image'] === 'uploads/imgs/default-game.jpg'): ?>
+                    <div class="game-icon">🎮</div>
+                <?php endif; ?>
+            </div>
             <div class="satta-header">
-                <span class="status-badge <?php echo $game_info['statusClass']; ?>">
-                    <?php echo $game_info['statusText']; ?>
-                </span>
                 <h3 class="satta-title"><?php echo $game_name; ?></h3>
-                
                 <div class="satta-result">
                     <span>---</span>
                 </div>
@@ -1192,9 +2929,9 @@ include 'includes/header.php';
                     <span class="satta-label">Close Time</span>
                     <span class="satta-value"><span class="timer"><?php echo $game_info['closeTime']; ?></span></span>
                 </div>
-                <button class="game-btn" <?php echo $is_closed ? 'disabled style="background: #666; cursor: not-allowed;"' : ''; ?>>
-                    <?php echo $is_closed ? 'Closed' : 'Play Now'; ?>
-                </button>
+                <span class="status-badge <?php echo $game_info['statusClass']; ?>">
+                    <?php echo $game_info['statusText']; ?>
+                </span>
                 
                 <?php if ($is_closed): ?>
                 <div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(214, 48, 49, 0.2); border-radius: 5px; font-weight: bold; color: #ff6b6b;">
@@ -1206,7 +2943,7 @@ include 'includes/header.php';
                 </div>
                 <?php elseif ($game_info['status'] === 'open'): ?>
                 <div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(0, 184, 148, 0.2); border-radius: 5px; font-weight: bold; color: #00b894;">
-                    ✅ Time Running - Bet Now!
+                    ✅ Time Running!
                 </div>
                 <?php endif; ?>
             </div>
@@ -1534,7 +3271,7 @@ function updateGameStatus() {
             } else if (newStatus === 'coming') {
                 newMessage = `<div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(253, 203, 110, 0.2); border-radius: 5px; font-weight: bold; color: #fdcb6e;">⏰ Opens at ${openTime}</div>`;
             } else if (newStatus === 'open') {
-                newMessage = '<div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(0, 184, 148, 0.2); border-radius: 5px; font-weight: bold; color: #00b894;">✅ Time Running - Bet Now!</div>';
+                newMessage = '<div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(0, 184, 148, 0.2); border-radius: 5px; font-weight: bold; color: #00b894;">✅ Time Running!</div>';
             }
             
             if (newMessage) {
@@ -1600,7 +3337,7 @@ updateGameStatus();
         showSlide(0);
         
         // Start auto slide change
-        slideInterval = setInterval(nextSlide, 3000);
+        slideInterval = setInterval(nextSlide, 5000);
     }
     
     // Start the slider when page loads
@@ -1762,7 +3499,7 @@ updateGameStatus();
                     } else if (newStatus === 'coming') {
                         newMessage = `<div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(253, 203, 110, 0.2); border-radius: 5px; font-weight: bold; color: #fdcb6e;">⏰ Opens at ${openTime}</div>`;
                     } else if (newStatus === 'open') {
-                        newMessage = '<div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(0, 184, 148, 0.2); border-radius: 5px; font-weight: bold; color: #00b894;">✅ Time Running - Bet Now!</div>';
+                        newMessage = '<div style="text-align: center; margin-top: 10px; padding: 10px; background: rgba(0, 184, 148, 0.2); border-radius: 5px; font-weight: bold; color: #00b894;">✅ Time Running!</div>';
                     }
                     
                     if (newMessage) {

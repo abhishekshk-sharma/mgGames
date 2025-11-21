@@ -204,14 +204,12 @@ header("Location: " . $redirect_url);
 exit();
 }
 
-
-
 // JODI - Store as {"56":500}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
     $selected_digit1 = isset($_POST['selected_digit1']) ? $_POST['selected_digit1'] : '';
     $selected_digit2 = isset($_POST['selected_digit2']) ? $_POST['selected_digit2'] : '';
     $jodi_outcomes_json = isset($_POST['jodi_outcomes']) ? $_POST['jodi_outcomes'] : '[]';
-    $bet_mode = isset($_POST['mode']) ? $_POST['mode'] : 'open';
+    $bet_mode = 'jodi'; // Force mode to be 'jodi' instead of 'open' or 'close'
     
     $active_outcomes = json_decode($jodi_outcomes_json, true);
     
@@ -289,11 +287,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_jodi_bet'])) {
         }
     }
     
-$redirect_params = $_GET;
-$redirect_params['type'] = $game_type;
-$redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
-header("Location: " . $redirect_url);
-exit();
+    $redirect_params = $_GET;
+    $redirect_params['type'] = $game_type;
+    $redirect_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($redirect_params);
+    header("Location: " . $redirect_url);
+    exit();
 }
 
 // PATTI GAMES - Store as {"123":500}
@@ -1806,18 +1804,18 @@ include 'includes/header.php';
             <p>Total Bet Amount: <span id="jodi-total-bet-amount">INR 0.00</span></p>
         </div>
         
-        <form method="POST" id="jodi-form">
-            <input type="hidden" name="selected_digit1" id="form-jodi-digit1">
-            <input type="hidden" name="selected_digit2" id="form-jodi-digit2">
-            <input type="hidden" name="jodi_outcomes" id="form-jodi-outcomes" value="[]">
-            <input type="hidden" name="bet_amount" id="form-jodi-bet-amount">
-            <input type="hidden" name="mode" id="form-jodi-mode" value="open">
-            <input type="hidden" name="place_jodi_bet" value="1">
-            
-            <button type="submit" class="action-btn place-bet-btn" id="place-jodi-bet-btn" disabled>
-                PLACE JODI BET
-            </button>
-        </form>
+      <form method="POST" id="jodi-form">
+    <input type="hidden" name="selected_digit1" id="form-jodi-digit1">
+    <input type="hidden" name="selected_digit2" id="form-jodi-digit2">
+    <input type="hidden" name="jodi_outcomes" id="form-jodi-outcomes" value="[]">
+    <input type="hidden" name="bet_amount" id="form-jodi-bet-amount">
+    <input type="hidden" name="mode" value="jodi"> <!-- Set to jodi instead of open -->
+    <input type="hidden" name="place_jodi_bet" value="1">
+    
+    <button type="submit" class="action-btn place-bet-btn" id="place-jodi-bet-btn" disabled>
+        PLACE JODI BET
+    </button>
+</form>
     </div>
 </div>
 
@@ -2368,10 +2366,6 @@ include 'includes/header.php';
         </button>
     </form>
 </div>
-
-        
-    
-
 
 
 <!-- Rown Game Interface -->
@@ -4015,27 +4009,65 @@ function toggleGameUI(gameType) {
             });
             
             document.getElementById('double-patti-modal').style.display = 'block';
-        }
-
-        function generateAllSinglePattiOutcomes() {
-            const outcomes = [];
-            
-            // Generate all ascending 3-digit combinations with distinct digits
-            // Using digits 0-9 where 0 means 10, but showing as 0 in display
-            for (let i = 0; i <= 9; i++) {
-                for (let j = i + 1; j <= 9; j++) {
-                    for (let k = j + 1; k <= 9; k++) {
-                        // Create the panna in ascending order
-                        const panna = i.toString() + j.toString() + k.toString();
-                        outcomes.push(panna);
                     }
-                }
+            function generateAllSinglePattiOutcomes() {
+                // Complete list of 120 single patti outcomes (0 means 10)
+                return [
+                    // Combinations starting with 1
+                    '120', '123', '124', '125', '126', '127', '128', '129',
+                    '130', '132', '134', '135', '136', '137', '138', '139',
+                    '140', '142', '143', '145', '146', '147', '148', '149',
+                    '150', '152', '153', '154', '156', '157', '158', '159',
+                    '160', '162', '163', '164', '165', '167', '168', '169',
+                    '170', '172', '173', '174', '175', '176', '178', '179',
+                    '180', '182', '183', '184', '185', '186', '187', '189',
+                    '190', '192', '193', '194', '195', '196', '197', '198',
+                    
+                    // Combinations starting with 2
+                    '230', '234', '235', '236', '237', '238', '239',
+                    '240', '243', '245', '246', '247', '248', '249',
+                    '250', '253', '254', '256', '257', '258', '259',
+                    '260', '263', '264', '265', '267', '268', '269',
+                    '270', '273', '274', '275', '276', '278', '279',
+                    '280', '283', '284', '285', '286', '287', '289',
+                    '290', '293', '294', '295', '296', '297', '298',
+                    
+                    // Combinations starting with 3
+                    '340', '345', '346', '347', '348', '349',
+                    '350', '354', '356', '357', '358', '359',
+                    '360', '364', '365', '367', '368', '369',
+                    '370', '374', '375', '376', '378', '379',
+                    '380', '384', '385', '386', '387', '389',
+                    '390', '394', '395', '396', '397', '398',
+                    
+                    // Combinations starting with 4
+                    '450', '456', '457', '458', '459',
+                    '460', '465', '467', '468', '469',
+                    '470', '475', '476', '478', '479',
+                    '480', '485', '486', '487', '489',
+                    '490', '495', '496', '497', '498',
+                    
+                    // Combinations starting with 5
+                    '560', '567', '568', '569',
+                    '570', '576', '578', '579',
+                    '580', '586', '587', '589',
+                    '590', '596', '597', '598',
+                    
+                    // Combinations starting with 6
+                    '670', '678', '679',
+                    '680', '687', '689',
+                    '690', '697', '698',
+                    
+                    // Combinations starting with 7
+                    '780', '789',
+                    '790', '798',
+                    
+                    // Combinations starting with 8
+                    '890'
+                ].sort();
             }
-            
-            return outcomes.sort();
-        }
         // Replace the generateAllDoublePattiOutcomes function with:
-        function generateAllDoublePattiOutcomes() {
+            function generateAllDoublePattiOutcomes() {
             // Complete list of 90 double patti outcomes
             return [
                 // 100 series (17 outcomes)
@@ -4072,8 +4104,9 @@ function toggleGameUI(gameType) {
                 // 900 series (2 outcomes)
                 '900', '990'
             ].sort();
-        }
-        // And then in the validateDoublePattiDigits function, we change the validation to use the list:
+                 }
+       
+                 // And then in the validateDoublePattiDigits function, we change the validation to use the list:
         function validateDoublePattiDigits(input) {
             const value = input.value.replace(/[^0-9]/g, '');
             input.value = value;
@@ -7499,9 +7532,9 @@ function toggleGameUI(gameType) {
     styleSheet.textContent = disabledButtonStyles;
     document.head.appendChild(styleSheet);
 </script> -->
+    <!-- // Game Time Management Script - DYNAMIC MODE VERSION -->
 <script>
-    // Game Time Management Script - DYNAMIC MODE VERSION
-function manageGameTimeLogic(openTime, closeTime, gameType = 'all') {
+   function manageGameTimeLogic(openTime, closeTime, gameType = 'all') {
     function checkGameTime() {
         const now = new Date();
         
@@ -7771,10 +7804,10 @@ function manageGameTimeLogic(openTime, closeTime, gameType = 'all') {
         stop: () => clearInterval(timeCheckInterval),
         checkNow: checkGameTime
     };
-}
+   }
 
-// Initialize toggle functionality - DYNAMIC MODE VERSION
-function initializeToggleFunctionality() {
+    // Initialize toggle functionality - DYNAMIC MODE VERSION
+   function initializeToggleFunctionality() {
     // Open/Close toggle event listeners
     document.querySelectorAll('.toggle-option').forEach(option => {
         option.addEventListener('click', function() {
@@ -7813,203 +7846,203 @@ function initializeToggleFunctionality() {
             updateAllModeInputs(currentMode);
         }
     }, 100);
-}
+  }
 
-// Enhanced function to update all mode inputs - DYNAMIC VERSION
-function updateAllModeInputs(mode) {
-    const allModeInputs = document.querySelectorAll(`
-        #form-single-ank-mode,
-        #form-jodi-mode, 
-        #form-patti-mode,
-        #form-sp-motor-mode,
-        #form-dp-motor-mode,
-        #form-sp-game-mode,
-        #form-dp-game-mode,
-        #form-sp-set-mode,
-        #form-dp-set-mode,
-        #form-tp-set-mode,
-        #form-common-mode,
-        #form-series-mode,
-        #form-rown-mode,
-        #form-abr-cut-mode,
-        #form-eki-mode,
-        #form-bkki-mode,
-        input[name="mode"][type="hidden"]
-    `);
-    
-    allModeInputs.forEach(input => {
-        input.value = mode;
-        console.log(`Updated ${input.id || 'mode input'} to: ${mode}`);
-    });
-}
-
-// Function to get current mode from UI
-function getCurrentMode() {
-    const openToggle = document.getElementById('open-toggle');
-    const closeToggle = document.getElementById('close-toggle');
-    
-    if (openToggle && openToggle.classList.contains('active')) {
-        return 'open';
-    } else if (closeToggle && closeToggle.classList.contains('active')) {
-        return 'close';
-    }
-    
-    // Default to open if no toggle is active (shouldn't happen with proper initialization)
-    return 'open';
-}
-
-// Enhanced form submission handler to ensure correct mode is sent
-function initializeFormSubmissionHandlers() {
-    // Intercept all bet form submissions to ensure correct mode
-    document.querySelectorAll('form').forEach(form => {
-        if (form.id && form.id.includes('form') && (form.id.includes('single-ank') || form.id.includes('jodi') || form.id.includes('patti') || form.id.includes('motor') || form.id.includes('game') || form.id.includes('set') || form.id.includes('common') || form.id.includes('series') || form.id.includes('rown') || form.id.includes('abr-cut') || form.id.includes('eki') || form.id.includes('bkki'))) {
+        // Enhanced function to update all mode inputs - DYNAMIC VERSION
+        function updateAllModeInputs(mode) {
+            const allModeInputs = document.querySelectorAll(`
+                #form-single-ank-mode,
+                #form-jodi-mode, 
+                #form-patti-mode,
+                #form-sp-motor-mode,
+                #form-dp-motor-mode,
+                #form-sp-game-mode,
+                #form-dp-game-mode,
+                #form-sp-set-mode,
+                #form-dp-set-mode,
+                #form-tp-set-mode,
+                #form-common-mode,
+                #form-series-mode,
+                #form-rown-mode,
+                #form-abr-cut-mode,
+                #form-eki-mode,
+                #form-bkki-mode,
+                input[name="mode"][type="hidden"]
+            `);
             
-            form.addEventListener('submit', function(e) {
-                // Get the current mode from UI
-                const currentMode = getCurrentMode();
-                
-                // Update the mode input in this form
-                const modeInput = this.querySelector('input[name="mode"], input[id*="mode"]');
-                if (modeInput) {
-                    modeInput.value = currentMode;
-                    console.log(`Form ${this.id} submission - Mode set to: ${currentMode}`);
-                }
-                
-                // You can add additional validation here if needed
-                console.log(`Submitting form ${this.id} with mode: ${currentMode}`);
+            allModeInputs.forEach(input => {
+                input.value = mode;
+                console.log(`Updated ${input.id || 'mode input'} to: ${mode}`);
             });
         }
-    });
-}
 
-// Get game times from URL parameters or use defaults
-function getGameTimes() {
-    const urlParams = new URLSearchParams(window.location.search);
-    
-    return {
-        openTime: urlParams.get('openTime') || '15:30:00',
-        closeTime: urlParams.get('closeTime') || '17:30:00'
-    };
-}
+        // Function to get current mode from UI
+        function getCurrentMode() {
+            const openToggle = document.getElementById('open-toggle');
+            const closeToggle = document.getElementById('close-toggle');
+            
+            if (openToggle && openToggle.classList.contains('active')) {
+                return 'open';
+            } else if (closeToggle && closeToggle.classList.contains('active')) {
+                return 'close';
+            }
+            
+            // Default to open if no toggle is active (shouldn't happen with proper initialization)
+            return 'open';
+        }
 
-// Detect game type from page content or URL
-function detectGameType() {
-    // Check URL for jodi indicator
-    if (window.location.href.includes('jodi') || window.location.href.includes('jodi')) {
-        return 'jodi';
-    }
-    
-    // Check for jodi elements in DOM
-    if (document.querySelector('[id*="jodi"], [class*="jodi"], .jodi-game')) {
-        return 'jodi';
-    }
-    
-    // Check page title or headings
-    const pageText = document.body.innerText.toLowerCase();
-    if (pageText.includes('jodi') && !pageText.includes('single') && !pageText.includes('patti')) {
-        return 'jodi';
-    }
-    
-    return 'all';
-}
+        // Enhanced form submission handler to ensure correct mode is sent
+        function initializeFormSubmissionHandlers() {
+            // Intercept all bet form submissions to ensure correct mode
+            document.querySelectorAll('form').forEach(form => {
+                if (form.id && form.id.includes('form') && (form.id.includes('single-ank') || form.id.includes('jodi') || form.id.includes('patti') || form.id.includes('motor') || form.id.includes('game') || form.id.includes('set') || form.id.includes('common') || form.id.includes('series') || form.id.includes('rown') || form.id.includes('abr-cut') || form.id.includes('eki') || form.id.includes('bkki'))) {
+                    
+                    form.addEventListener('submit', function(e) {
+                        // Get the current mode from UI
+                        const currentMode = getCurrentMode();
+                        
+                        // Update the mode input in this form
+                        const modeInput = this.querySelector('input[name="mode"], input[id*="mode"]');
+                        if (modeInput) {
+                            modeInput.value = currentMode;
+                            console.log(`Form ${this.id} submission - Mode set to: ${currentMode}`);
+                        }
+                        
+                        // You can add additional validation here if needed
+                        console.log(`Submitting form ${this.id} with mode: ${currentMode}`);
+                    });
+                }
+            });
+        }
 
-// Initialize when page loads - ENHANCED VERSION
-document.addEventListener('DOMContentLoaded', function() {
-    const gameTimes = getGameTimes();
-    const gameType = detectGameType();
-    
-    // Initialize toggle functionality first
-    initializeToggleFunctionality();
-    
-    // Initialize form submission handlers
-    initializeFormSubmissionHandlers();
-    
-    // Then initialize game time manager
-    window.gameTimeManager = manageGameTimeLogic(gameTimes.openTime, gameTimes.closeTime, gameType);
-    
-    console.log('Dynamic Mode Manager initialized with:', {
-        ...gameTimes,
-        gameType: gameType
-    });
-});
+        // Get game times from URL parameters or use defaults
+        function getGameTimes() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            return {
+                openTime: urlParams.get('openTime') || '15:30:00',
+                closeTime: urlParams.get('closeTime') || '17:30:00'
+            };
+        }
 
-// Utility function to manually check current mode
-window.getCurrentBetMode = function() {
-    return getCurrentMode();
-};
+        // Detect game type from page content or URL
+        function detectGameType() {
+            // Check URL for jodi indicator
+            if (window.location.href.includes('jodi') || window.location.href.includes('jodi')) {
+                return 'jodi';
+            }
+            
+            // Check for jodi elements in DOM
+            if (document.querySelector('[id*="jodi"], [class*="jodi"], .jodi-game')) {
+                return 'jodi';
+            }
+            
+            // Check page title or headings
+            const pageText = document.body.innerText.toLowerCase();
+            if (pageText.includes('jodi') && !pageText.includes('single') && !pageText.includes('patti')) {
+                return 'jodi';
+            }
+            
+            return 'all';
+        }
 
-// Utility function to manually set mode
-window.setBetMode = function(mode) {
-    const openToggle = document.getElementById('open-toggle');
-    const closeToggle = document.getElementById('close-toggle');
-    
-    if (mode === 'open' && openToggle) {
-        openToggle.click();
-    } else if (mode === 'close' && closeToggle) {
-        closeToggle.click();
-    }
-};
+        // Initialize when page loads - ENHANCED VERSION
+        document.addEventListener('DOMContentLoaded', function() {
+            const gameTimes = getGameTimes();
+            const gameType = detectGameType();
+            
+            // Initialize toggle functionality first
+            initializeToggleFunctionality();
+            
+            // Initialize form submission handlers
+            initializeFormSubmissionHandlers();
+            
+            // Then initialize game time manager
+            window.gameTimeManager = manageGameTimeLogic(gameTimes.openTime, gameTimes.closeTime, gameType);
+            
+            console.log('Dynamic Mode Manager initialized with:', {
+                ...gameTimes,
+                gameType: gameType
+            });
+        });
 
-// Add some CSS for the disabled state
-const disabledButtonStyles = `
-    .place-bet-btn:disabled {
-        background-color: #666 !important;
-        border-color: #666 !important;
-        cursor: not-allowed !important;
-        opacity: 0.6 !important;
-    }
-    
-    .place-bet-btn.matka-closed {
-        background: linear-gradient(135deg, #666, #888) !important;
-        border: 2px solid #666 !important;
-        color: #ccc !important;
-    }
-    
-    .jodi-closed {
-        background: linear-gradient(135deg, #8B0000, #A52A2A) !important;
-        border: 2px solid #8B0000 !important;
-        color: #fff !important;
-    }
-    
-    .toggle-option {
-        cursor: pointer;
-        padding: 8px 16px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        margin: 0 5px;
-        transition: all 0.3s ease;
-        background-color: #f8f9fa;
-        color: #333;
-    }
-    
-    .toggle-option.active {
-        background-color: #4CAF50;
-        color: white;
-        border-color: #4CAF50;
-        font-weight: bold;
-    }
-    
-    .toggle-option:not(.active):hover {
-        background-color: #e9ecef;
-        border-color: #adb5bd;
-    }
-    
-    .toggle-option.active.open-active {
-        background-color: #4CAF50;
-    }
-    
-    .toggle-option.active.close-active {
-        background-color: #f44336;
-    }
-`;
+        // Utility function to manually check current mode
+        window.getCurrentBetMode = function() {
+            return getCurrentMode();
+        };
 
-// Inject styles
-if (!document.querySelector('#dynamic-mode-styles')) {
-    const styleSheet = document.createElement('style');
-    styleSheet.id = 'dynamic-mode-styles';
-    styleSheet.textContent = disabledButtonStyles;
-    document.head.appendChild(styleSheet);
-}
+        // Utility function to manually set mode
+        window.setBetMode = function(mode) {
+            const openToggle = document.getElementById('open-toggle');
+            const closeToggle = document.getElementById('close-toggle');
+            
+            if (mode === 'open' && openToggle) {
+                openToggle.click();
+            } else if (mode === 'close' && closeToggle) {
+                closeToggle.click();
+            }
+        };
+
+        // Add some CSS for the disabled state
+        const disabledButtonStyles = `
+            .place-bet-btn:disabled {
+                background-color: #666 !important;
+                border-color: #666 !important;
+                cursor: not-allowed !important;
+                opacity: 0.6 !important;
+            }
+            
+            .place-bet-btn.matka-closed {
+                background: linear-gradient(135deg, #666, #888) !important;
+                border: 2px solid #666 !important;
+                color: #ccc !important;
+            }
+            
+            .jodi-closed {
+                background: linear-gradient(135deg, #8B0000, #A52A2A) !important;
+                border: 2px solid #8B0000 !important;
+                color: #fff !important;
+            }
+            
+            .toggle-option {
+                cursor: pointer;
+                padding: 8px 16px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                margin: 0 5px;
+                transition: all 0.3s ease;
+                background-color: #f8f9fa;
+                color: #333;
+            }
+            
+            .toggle-option.active {
+                background-color: #4CAF50;
+                color: white;
+                border-color: #4CAF50;
+                font-weight: bold;
+            }
+            
+            .toggle-option:not(.active):hover {
+                background-color: #e9ecef;
+                border-color: #adb5bd;
+            }
+            
+            .toggle-option.active.open-active {
+                background-color: #4CAF50;
+            }
+            
+            .toggle-option.active.close-active {
+                background-color: #f44336;
+            }
+        `;
+
+        // Inject styles
+        if (!document.querySelector('#dynamic-mode-styles')) {
+            const styleSheet = document.createElement('style');
+            styleSheet.id = 'dynamic-mode-styles';
+            styleSheet.textContent = disabledButtonStyles;
+            document.head.appendChild(styleSheet);
+        }
 </script>
 </body>
 </html>

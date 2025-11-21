@@ -238,8 +238,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['withdraw_submit'])) {
                     if ($bank_id <= 0) {
                         $errors[] = "Please select a bank account";
                     } else {
-                        // Verify bank account belongs to user
-                        $bank_check_sql = "SELECT id FROM user_banks WHERE id = ? AND user_id = ?";
+                        // Verify bank account belongs to user and get details
+                        $bank_check_sql = "SELECT holder_name, bank_name, account_number, ifsc_code FROM user_banks WHERE id = ? AND user_id = ?";
                         if ($bank_check_stmt = $conn->prepare($bank_check_sql)) {
                             $bank_check_stmt->bind_param("ii", $bank_id, $user_id);
                             $bank_check_stmt->execute();
@@ -247,31 +247,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['withdraw_submit'])) {
                             
                             if ($bank_check_stmt->num_rows === 0) {
                                 $errors[] = "Invalid bank account selected";
+                            } else {
+                                // Get bank details for account_details field
+                                $bank_check_stmt->bind_result($holder_name, $bank_name, $account_number, $ifsc_code);
+                                $bank_check_stmt->fetch();
+                                
+                                // Create account_details JSON string with all bank information
+                                $account_details = json_encode([
+                                    'holder_name' => $holder_name,
+                                    'bank_name' => $bank_name,
+                                    'account_number' => $account_number,
+                                    'ifsc_code' => $ifsc_code,
+                                    'bank_id' => $bank_id
+                                ]);
+                                error_log("Bank details prepared: $holder_name, $bank_name, $account_number, $ifsc_code");
                             }
                             $bank_check_stmt->close();
-                        }
-                        
-                        // Get bank details for account_details field
-                        if (empty($errors)) {
-                            $bank_details_sql = "SELECT holder_name, bank_name, account_number, ifsc_code FROM user_banks WHERE id = ?";
-                            if ($bank_details_stmt = $conn->prepare($bank_details_sql)) {
-                                $bank_details_stmt->bind_param("i", $bank_id);
-                                $bank_details_stmt->execute();
-                                $bank_details_stmt->bind_result($holder_name, $bank_name, $account_number, $ifsc_code);
-                                if ($bank_details_stmt->fetch()) {
-                                    $account_details = json_encode([
-                                        'holder_name' => $holder_name,
-                                        'bank_name' => $bank_name,
-                                        'account_number' => $account_number,
-                                        'ifsc_code' => $ifsc_code,
-                                        'bank_id' => $bank_id
-                                    ]);
-                                    error_log("Bank details prepared: $holder_name, $bank_name, $account_number");
-                                } else {
-                                    $errors[] = "Failed to fetch bank details";
-                                }
-                                $bank_details_stmt->close();
-                            }
                         }
                     }
                 }
@@ -285,6 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['withdraw_submit'])) {
                         $db_payment_method = ($payment_method === 'bank') ? 'bank_transfer' : $payment_method;
                         
                         error_log("Inserting withdrawal with method: $db_payment_method");
+                        error_log("Account details: " . $account_details);
                         
                         // Insert withdrawal record
                         $withdraw_sql = "INSERT INTO withdrawals (user_id, amount, payment_method, account_details, status) 
@@ -586,36 +578,52 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
     <title>RB Games - Betting Platform</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
 <style>
         * {
-            margin: 0;
+              margin: 0;
             padding: 0;
             box-sizing: border-box;
             font-family: 'Poppins', sans-serif;
         }
 
         :root {
-            --primary: #ff3c7e;
-            --secondary: #0fb4c9ff;
-            --accent: #00cec9;
-            --dark: #7098a3ff;
-            --light: #f5f6fa;
-            --success: #00b894;
-            --warning: #fdcb6e;
-            --danger: #d63031;
+            --primary: #f7bc0cff;
+            --secondary: #f7e30dff;
+            --accent: #c0c0c0;
+            --dark: #3a3939ff;
+            --light: #f7f6f4ff;
+            --success: #32cd32;
+            --warning: #ffbf00ff;
+            --danger: #ff4500;
+            --card-bg: rgba(20, 20, 20, 0.95);
+            --header-bg: rgba(255, 255, 255, 0.98);
+            --gradient-primary: linear-gradient(135deg, #b09707ff 0%, #ffed4e 100%);
+            --gradient-secondary: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
+            --gradient-accent: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+            --gradient-dark: linear-gradient(135deg, #e4d69bff 0%, rgba(13, 13, 13, 1) 100%);
+            --gradient-premium: linear-gradient(135deg, #ffd700 0%,rgba(16, 16, 15, 1)100%);
+            --card-shadow: 0 12px 40px rgba(255, 215, 0, 0.15);
+            --glow-effect: 0 0 25px rgba(255, 215, 0, 0.3);
+            --glow-blue: 0 0 25px rgba(0, 0, 0, 0.3);
+            --border-radius: 16px;
         }
 
         body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: var(--light);
+            background: var(--gradient-dark);
+            color: var(--dark);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
         }
 
         /* Header Styles */
         header {
-            background: rgba(26, 26, 46, 0.95);
+            background: rgba(11, 8, 1, 0.97);
             backdrop-filter: blur(10px);
             padding: 1rem 2rem;
             display: flex;
@@ -641,7 +649,8 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
 
         .logo h1 {
             font-size: 1.8rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
+          
+            background: linear-gradient(to right, var(--primary));
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
@@ -725,10 +734,10 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            background: rgba(255, 60, 126, 0.1);
+            background: rgba(221, 170, 17, 0.1);
             padding: 0.5rem 1rem;
             border-radius: 50px;
-            border: 1px solid rgba(255, 60, 126, 0.3);
+            border: 1px solid rgba(221, 170, 17, 0.3);
         }
 
         .balance-display i {
@@ -765,11 +774,11 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
         }
 
         .btn-login:hover {
-            background: rgba(255, 60, 126, 0.1);
+            background: rgba(221, 170, 17, 0.1);
         }
 
         .btn-register:hover {
-            background: #ff2a6d;
+            background: #c4950e;
             transform: translateY(-2px);
         }
 
@@ -798,7 +807,7 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
         }
 
         .dropdown-menu a:hover {
-            background: rgba(255, 60, 126, 0.2);
+            background: rgba(221, 170, 17, 0.2);
             color: var(--primary);
         }
 
@@ -809,12 +818,20 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
         .hamburger {
             display: none;
             flex-direction: column;
-            gap: 5px;
+            gap: 6px;
             cursor: pointer;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .hamburger:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
 
         .hamburger span {
-            width: 25px;
+            width: 28px;
             height: 3px;
             background: var(--light);
             border-radius: 5px;
@@ -832,7 +849,7 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
                 left: -100%;
                 width: 100%;
                 height: calc(100vh - 80px);
-                background: rgba(26, 26, 46, 0.98);
+                background: rgba(110, 110, 128, 0.98);
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
@@ -1014,7 +1031,7 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: #666;
+                color: #eeececff;
                 font-size: 0.8rem;
             }
 
@@ -1385,7 +1402,7 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
         }
 
         .profile-modal-header {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
+            background: linear-gradient(to right, var(--primary));
             padding: 1.5rem 2rem;
             color: white;
             border-radius: 15px 15px 0 0;
@@ -1635,231 +1652,231 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
             }
         }
         /* Bank Management Styles */
-.bank-management-section {
-    margin: 1.5rem 0;
-    padding: 1.5rem;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
+        .bank-management-section {
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
 
-.bank-management-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-}
+        .bank-management-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
 
-.bank-management-title {
-    color: var(--light);
-    font-size: 1.2rem;
-    font-weight: 600;
-}
+        .bank-management-title {
+            color: var(--light);
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
 
-.add-bank-btn {
-    background: var(--secondary);
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-}
+        .add-bank-btn {
+            background: var(--secondary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
 
-.add-bank-btn:hover {
-    background: #0da4b5;
-    transform: translateY(-2px);
-}
+        .add-bank-btn:hover {
+            background: #0da4b5;
+            transform: translateY(-2px);
+        }
 
-.banks-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
+        .banks-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
 
-.bank-item {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-}
+        .bank-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
 
-.bank-item:hover {
-    border-color: var(--primary);
-    background: rgba(255, 60, 126, 0.05);
-}
+        .bank-item:hover {
+            border-color: var(--primary);
+            background: rgba(255, 60, 126, 0.05);
+        }
 
-.bank-item.selected {
-    border-color: var(--primary);
-    background: rgba(255, 60, 126, 0.1);
-}
+        .bank-item.selected {
+            border-color: var(--primary);
+            background: rgba(255, 60, 126, 0.1);
+        }
 
-.bank-item::after {
-    content: "✓";
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    color: var(--primary);
-    font-weight: bold;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
+        .bank-item::after {
+            content: "✓";
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: var(--primary);
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
 
-.bank-item.selected::after {
-    opacity: 1;
-}
+        .bank-item.selected::after {
+            opacity: 1;
+        }
 
-.bank-details {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
+        .bank-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
 
-.bank-name {
-    font-weight: 600;
-    color: var(--light);
-    font-size: 1rem;
-}
+        .bank-name {
+            font-weight: 600;
+            color: var(--light);
+            font-size: 1rem;
+        }
 
-.account-number {
-    color: #b2bec3;
-    font-size: 0.9rem;
-}
+        .account-number {
+            color: #b2bec3;
+            font-size: 0.9rem;
+        }
 
-.holder-name {
-    color: #b2bec3;
-    font-size: 0.9rem;
-}
+        .holder-name {
+            color: #b2bec3;
+            font-size: 0.9rem;
+        }
 
-.no-banks-message {
-    text-align: center;
-    padding: 2rem;
-    color: #b2bec3;
-    font-style: italic;
-}
+        .no-banks-message {
+            text-align: center;
+            padding: 2rem;
+            color: #b2bec3;
+            font-style: italic;
+        }
 
-/* Add Bank Modal Styles */
-.add-bank-modal {
-    display: none;
-    position: fixed;
-    z-index: 3000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(5px);
-    animation: fadeIn 0.3s ease;
-    overflow-y: auto;
-}
+        /* Add Bank Modal Styles */
+        .add-bank-modal {
+            display: none;
+            position: fixed;
+            z-index: 3000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s ease;
+            overflow-y: auto;
+        }
 
-.add-bank-modal-content {
-    background: linear-gradient(145deg, #1e2044, #191a38);
-    margin: 5% auto;
-    padding: 0;
-    border-radius: 15px;
-    width: 90%;
-    max-width: 500px;
-    max-height: 90vh;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    animation: slideIn 0.3s ease;
-    position: relative;
-}
+        .add-bank-modal-content {
+            background: linear-gradient(145deg, #1e2044, #191a38);
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.3s ease;
+            position: relative;
+        }
 
-.add-bank-modal-header {
-    background: linear-gradient(to right, var(--secondary), var(--primary));
-    padding: 1.5rem 2rem;
-    color: white;
-    border-radius: 15px 15px 0 0;
-    text-align: center;
-}
+        .add-bank-modal-header {
+            background: linear-gradient(to right, var(--secondary), var(--primary));
+            padding: 1.5rem 2rem;
+            color: white;
+            border-radius: 15px 15px 0 0;
+            text-align: center;
+        }
 
-.add-bank-modal-title {
-    font-size: 1.8rem;
-    margin-bottom: 0.5rem;
-}
+        .add-bank-modal-title {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
 
-.add-bank-modal-body {
-    padding: 2rem;
-    max-height: calc(90vh - 120px);
-    overflow-y: auto;
-}
+        .add-bank-modal-body {
+            padding: 2rem;
+            max-height: calc(90vh - 120px);
+            overflow-y: auto;
+        }
 
-.close-add-bank-modal {
-    position: absolute;
-    top: 15px;
-    right: 20px;
-    color: #fff;
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    z-index: 10;
-    transition: all 0.3s ease;
-    background: rgba(255, 60, 126, 0.7);
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+        .close-add-bank-modal {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s ease;
+            background: rgba(255, 60, 126, 0.7);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-.close-add-bank-modal:hover {
-    background: var(--primary);
-    transform: rotate(90deg);
-}
+        .close-add-bank-modal:hover {
+            background: var(--primary);
+            transform: rotate(90deg);
+        }
 
-.terms-alert {
-    background: rgba(253, 203, 110, 0.1);
-    border: 1px solid var(--warning);
-    border-radius: 8px;
-    padding: 1rem;
-    margin: 1.5rem 0;
-}
+        .terms-alert {
+            background: rgba(253, 203, 110, 0.1);
+            border: 1px solid var(--warning);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+        }
 
-.terms-alert p {
-    color: var(--warning);
-    font-size: 0.9rem;
-    margin: 0;
-    text-align: center;
-}
+        .terms-alert p {
+            color: var(--warning);
+            font-size: 0.9rem;
+            margin: 0;
+            text-align: center;
+        }
 
-.bank-alert {
-    background: rgba(214, 48, 49, 0.1);
-    border: 1px solid var(--danger);
-    border-radius: 8px;
-    padding: 1rem;
-    margin: 1.5rem 0;
-}
+        .bank-alert {
+            background: rgba(214, 48, 49, 0.1);
+            border: 1px solid var(--danger);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+        }
 
-.bank-alert p {
-    color: var(--danger);
-    font-size: 0.9rem;
-    margin: 0;
-    text-align: center;
-}
+        .bank-alert p {
+            color: var(--danger);
+            font-size: 0.9rem;
+            margin: 0;
+            text-align: center;
+        }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .add-bank-modal-content {
-        width: 95%;
-        margin: 10% auto;
-    }
-    
-    .add-bank-modal-body {
-        padding: 1.5rem;
-    }
-    
-    .bank-management-section {
-        padding: 1rem;
-    }
-}
-    </style>
-</head>
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .add-bank-modal-content {
+                width: 95%;
+                margin: 10% auto;
+            }
+            
+            .add-bank-modal-body {
+                padding: 1.5rem;
+            }
+            
+            .bank-management-section {
+                padding: 1rem;
+            }
+        }
+</style>
+ </head>
 <body>
     <!-- Header -->
      <header>
@@ -1908,7 +1925,6 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
             <span></span>
         </div>
     </header>
-<!-- Profile Modal -->
 <!-- Profile Modal -->
 <div id="profileModal" class="profile-modal">
     <div class="profile-modal-content">
@@ -2295,6 +2311,10 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
 </div>
     </div>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+
+
 <script>
  // Mobile menu functionality
 const hamburger = document.getElementById("hamburger");
@@ -2630,7 +2650,7 @@ document.addEventListener("input", function(e) {
         updateWithdrawButtonState();
     }
 });
-// Enhanced bank selection with auto-selection
+// Enhanced bank selection with better validation
 function setupBankSelection() {
     const bankItems = document.querySelectorAll(".bank-item");
     const bankIdInput = document.getElementById("bank_id");
@@ -2639,8 +2659,7 @@ function setupBankSelection() {
     console.log("Setting up bank selection:", {
         bankItems: bankItems.length,
         bankIdInput: bankIdInput,
-        currentMethod: withdrawMethod,
-        selectedBank: bankIdInput.value
+        currentMethod: withdrawMethod
     });
     
     if (bankItems.length > 0 && bankIdInput) {
@@ -2666,17 +2685,9 @@ function setupBankSelection() {
         });
         
         // Auto-select first bank if none selected and method is bank
-        if (withdrawMethod === 'bank') {
-            if (!document.querySelector(".bank-item.selected") && bankItems.length > 0) {
-                console.log("Auto-selecting first bank");
-                bankItems[0].click();
-            } else if (document.querySelector(".bank-item.selected")) {
-                // If already selected, ensure bank_id is set
-                const selectedBank = document.querySelector(".bank-item.selected");
-                const selectedBankId = selectedBank.getAttribute("data-bank-id");
-                bankIdInput.value = selectedBankId;
-                console.log("Bank already selected - ID:", selectedBankId);
-            }
+        if (withdrawMethod === 'bank' && !document.querySelector(".bank-item.selected") && bankItems.length > 0) {
+            console.log("Auto-selecting first bank");
+            bankItems[0].click();
         }
     } else {
         console.log("No banks found or bankIdInput missing");
@@ -3104,4 +3115,21 @@ function hideAmountError() {
 document.addEventListener('DOMContentLoaded', function() {
     enhanceWithdrawalForm();
 });
+
+// let lastScrollTop = 0;
+// window.addEventListener("scroll", function() {
+//   let currentScroll = document.documentElement.scrollTop || document.body.scrollTop;
+  
+//   if (currentScroll > lastScrollTop) {
+//     $("header").css({
+//         "background": "transparent"
+//     });
+//   } else {
+//     $("header").css({
+//         "background": " rgba(11, 8, 1, 0.97)"
+//     });
+//   }
+//   lastScrollTop = currentScroll <= 0 ? 0 : currentScroll; // avoid negative values
+// });
+
 </script>

@@ -1699,7 +1699,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         
         proofModalClose.addEventListener('click', function() {
             proofModal.classList.remove('active');
-        });
+        }); 
         
         proofModal.addEventListener('click', function(e) {
             if (e.target === proofModal) {
