@@ -1,3 +1,4 @@
+
 <?php
 // admin_games.php
 require_once '../config.php';
@@ -13,10 +14,9 @@ if (!isset($_SESSION['super_admin_id'])) {
     exit;
 }
 
-
 // Get admin details
-$admin_id = $_SESSION['super_admin_id'];
-$admin_username = $_SESSION['super_admin_username'];
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
 // Handle form submissions
 $message = '';
@@ -35,23 +35,77 @@ if (isset($_POST['add_game'])) {
     $max_bet = $_POST['max_bet'];
     $status = $_POST['status'];
     
-    // Check if game code already exists
-    $check_sql = "SELECT id FROM games WHERE code = '$code'";
-    $check_result = $conn->query($check_sql);
-    
-    if ($check_result->num_rows > 0) {
-        $message = "Game code already exists!";
-        $message_type = "error";
-    } else {
-        $sql = "INSERT INTO games (name, code, description, open_time, close_time, result_time, game_mode, min_bet, max_bet, status) 
-                VALUES ('$name', '$code', '$description', '$open_time', '$close_time', '$result_time', '$game_mode', '$min_bet', '$max_bet', '$status')";
+    // Handle image upload
+    $dynamic_images = '';
+    if (isset($_FILES['dynamic_images']) && $_FILES['dynamic_images']['error'] == 0) {
+        $uploadDir = '../uploads/imgs/';
         
-        if ($conn->query($sql) === TRUE) {
-            $message = "Game added successfully!";
-            $message_type = "success";
+        // Create directory if it doesn't exist
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+        
+        $fileName = time() . '_' . basename($_FILES['dynamic_images']['name']);
+        $targetFilePath = $uploadDir . $fileName;
+        
+        // Check if image file is an actual image
+        $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
+        $check = getimagesize($_FILES['dynamic_images']['tmp_name']);
+        
+        if ($check !== false) {
+            // Allow certain file formats
+            $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            if (in_array($imageFileType, $allowedTypes)) {
+                // Check file size (5MB maximum)
+                if ($_FILES['dynamic_images']['size'] <= 5000000) {
+                    if (move_uploaded_file($_FILES['dynamic_images']['tmp_name'], $targetFilePath)) {
+                        $dynamic_images = 'uploads/imgs/' . $fileName;
+                    } else {
+                        $message = "Sorry, there was an error uploading your file.";
+                        $message_type = "error";
+                    }
+                } else {
+                    $message = "Sorry, your file is too large. Maximum size is 5MB.";
+                    $message_type = "error";
+                }
+            } else {
+                $message = "Sorry, only JPG, JPEG, PNG, GIF & WEBP files are allowed.";
+                $message_type = "error";
+            }
         } else {
-            $message = "Error adding game: " . $conn->error;
+            $message = "File is not an image.";
             $message_type = "error";
+        }
+    }
+    
+    // If there was an error with image upload, stop further processing
+    if ($message_type === 'error') {
+        // Show error message and continue
+    } else {
+        // Check if game code already exists
+        $check_sql = "SELECT id FROM games WHERE code = '$code'";
+        $check_result = $conn->query($check_sql);
+        
+        if ($check_result->num_rows > 0) {
+            $message = "Game code already exists!";
+            $message_type = "error";
+        } else {
+            // Prepare SQL with or without image
+            if (!empty($dynamic_images)) {
+                $sql = "INSERT INTO games (name, code, description, open_time, close_time, result_time, game_mode, min_bet, max_bet, status, dynamic_images) 
+                        VALUES ('$name', '$code', '$description', '$open_time', '$close_time', '$result_time', '$game_mode', '$min_bet', '$max_bet', '$status', '$dynamic_images')";
+            } else {
+                $sql = "INSERT INTO games (name, code, description, open_time, close_time, result_time, game_mode, min_bet, max_bet, status) 
+                        VALUES ('$name', '$code', '$description', '$open_time', '$close_time', '$result_time', '$game_mode', '$min_bet', '$max_bet', '$status')";
+            }
+            
+            if ($conn->query($sql) === TRUE) {
+                $message = "Game added successfully!";
+                $message_type = "success";
+            } else {
+                $message = "Error adding game: " . $conn->error;
+                $message_type = "error";
+            }
         }
     }
 }
@@ -69,24 +123,98 @@ if (isset($_POST['update_game'])) {
     $max_bet = $_POST['max_bet'];
     $status = $_POST['status'];
     
-    $sql = "UPDATE games SET 
-            name = '$name', 
-            description = '$description', 
-            open_time = '$open_time', 
-            close_time = '$close_time', 
-            result_time = '$result_time', 
-            game_mode = '$game_mode', 
-            min_bet = '$min_bet', 
-            max_bet = '$max_bet', 
-            status = '$status' 
-            WHERE id = $game_id";
+    // Handle image upload
+    $dynamic_images = '';
+    if (isset($_FILES['dynamic_images']) && $_FILES['dynamic_images']['error'] == 0) {
+        $uploadDir = '../uploads/imgs/';
+        
+        // Create directory if it doesn't exist
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+        
+        $fileName = time() . '_' . basename($_FILES['dynamic_images']['name']);
+        $targetFilePath = $uploadDir . $fileName;
+        
+        // Check if image file is an actual image
+        $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
+        $check = getimagesize($_FILES['dynamic_images']['tmp_name']);
+        
+        if ($check !== false) {
+            // Allow certain file formats
+            $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            if (in_array($imageFileType, $allowedTypes)) {
+                // Check file size (5MB maximum)
+                if ($_FILES['dynamic_images']['size'] <= 5000000) {
+                    if (move_uploaded_file($_FILES['dynamic_images']['tmp_name'], $targetFilePath)) {
+                        $dynamic_images = 'uploads/imgs/' . $fileName;
+                        
+                        // Delete old image if exists
+                        $old_image_sql = "SELECT dynamic_images FROM games WHERE id = $game_id";
+                        $old_image_result = $conn->query($old_image_sql);
+                        if ($old_image_result && $old_image_result->num_rows > 0) {
+                            $old_game = $old_image_result->fetch_assoc();
+                            if (!empty($old_game['dynamic_images']) && file_exists('../' . $old_game['dynamic_images'])) {
+                                unlink('../' . $old_game['dynamic_images']);
+                            }
+                        }
+                    } else {
+                        $message = "Sorry, there was an error uploading your file.";
+                        $message_type = "error";
+                    }
+                } else {
+                    $message = "Sorry, your file is too large. Maximum size is 5MB.";
+                    $message_type = "error";
+                }
+            } else {
+                $message = "Sorry, only JPG, JPEG, PNG, GIF & WEBP files are allowed.";
+                $message_type = "error";
+            }
+        } else {
+            $message = "File is not an image.";
+            $message_type = "error";
+        }
+    }
     
-    if ($conn->query($sql) === TRUE) {
-        $message = "Game updated successfully!";
-        $message_type = "success";
+    // If there was an error with image upload, stop further processing
+    if ($message_type === 'error') {
+        // Show error message and continue
     } else {
-        $message = "Error updating game: " . $conn->error;
-        $message_type = "error";
+        // Prepare SQL with or without image update
+        if (!empty($dynamic_images)) {
+            $sql = "UPDATE games SET 
+                    name = '$name', 
+                    description = '$description', 
+                    open_time = '$open_time', 
+                    close_time = '$close_time', 
+                    result_time = '$result_time', 
+                    game_mode = '$game_mode', 
+                    min_bet = '$min_bet', 
+                    max_bet = '$max_bet', 
+                    status = '$status',
+                    dynamic_images = '$dynamic_images' 
+                    WHERE id = $game_id";
+        } else {
+            $sql = "UPDATE games SET 
+                    name = '$name', 
+                    description = '$description', 
+                    open_time = '$open_time', 
+                    close_time = '$close_time', 
+                    result_time = '$result_time', 
+                    game_mode = '$game_mode', 
+                    min_bet = '$min_bet', 
+                    max_bet = '$max_bet', 
+                    status = '$status' 
+                    WHERE id = $game_id";
+        }
+        
+        if ($conn->query($sql) === TRUE) {
+            $message = "Game updated successfully!";
+            $message_type = "success";
+        } else {
+            $message = "Error updating game: " . $conn->error;
+            $message_type = "error";
+        }
     }
 }
 
@@ -102,6 +230,17 @@ if (isset($_GET['delete'])) {
         $message = "Cannot delete game with active sessions!";
         $message_type = "error";
     } else {
+        // Get game image path before deleting
+        $image_sql = "SELECT dynamic_images FROM games WHERE id = $game_id";
+        $image_result = $conn->query($image_sql);
+        if ($image_result && $image_result->num_rows > 0) {
+            $game = $image_result->fetch_assoc();
+            // Delete image file if exists
+            if (!empty($game['dynamic_images']) && file_exists('../' . $game['dynamic_images'])) {
+                unlink('../' . $game['dynamic_images']);
+            }
+        }
+        
         $sql = "DELETE FROM games WHERE id = $game_id";
         if ($conn->query($sql) === TRUE) {
             $message = "Game deleted successfully!";
@@ -701,6 +840,48 @@ if (isset($_GET['edit'])) {
         display: block;
     }
 
+    /* Image Preview Styles */
+    .image-upload-container {
+        margin-bottom: 1.5rem;
+    }
+
+    .image-preview {
+        max-width: 300px;
+        max-height: 200px;
+        margin-top: 1rem;
+        border-radius: 8px;
+        border: 2px solid var(--border-color);
+        display: <?php echo (isset($edit_game) && !empty($edit_game['dynamic_images'])) ? 'block' : 'none'; ?>;
+    }
+
+    .current-image {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .current-image img {
+        max-width: 200px;
+        max-height: 150px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+    }
+
+    .image-note {
+        background: rgba(253, 203, 110, 0.2);
+        border: 1px solid rgba(253, 203, 110, 0.3);
+        color: var(--warning);
+        padding: 0.8rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .image-note i {
+        margin-right: 0.5rem;
+    }
+
     /* Responsive Design */
     @media (max-width: 1200px) {
         .main-content {
@@ -815,6 +996,10 @@ if (isset($_GET['edit'])) {
         .tab.active {
             border-left-color: var(--primary);
             border-bottom-color: var(--border-color);
+        }
+        
+        .image-preview {
+            max-width: 100%;
         }
     }
 
@@ -1057,6 +1242,14 @@ if (isset($_GET['edit'])) {
                     <i class="fa-regular fa-pen-to-square"></i>
                     <span>Edit Games</span>
                 </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
+                </a>
                 <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Platform Reports</span>
@@ -1089,11 +1282,17 @@ if (isset($_GET['edit'])) {
                     <p>Create and manage matka games</p>
                 </div>
                 <div class="header-actions">
+                    <div class="current-time">
+                        <i class="fas fa-clock"></i>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
+                    </div>
+                    
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span><?php echo $admin_username; ?></span>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
                     </div>
-                    <a href="admin_logout.php" class="logout-btn">
+                    
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -1249,10 +1448,38 @@ if (isset($_GET['edit'])) {
                         <a href="admin_games.php" class="view-all">Back to List</a>
                     </div>
                     
-                    <form method="POST" id="gameForm">
+                    <form method="POST" id="gameForm" enctype="multipart/form-data">
                         <?php if (isset($_GET['edit'])): ?>
                             <input type="hidden" name="game_id" value="<?php echo $edit_game['id']; ?>">
                         <?php endif; ?>
+                        
+                        <!-- Image Upload Section -->
+                        <div class="image-upload-container">
+                            <div class="image-note">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <strong>Please make sure the image should be in landscape for better resolution</strong>
+                            </div>
+                            
+                            <?php if (isset($edit_game) && !empty($edit_game['dynamic_images'])): ?>
+                                <div class="current-image">
+                                    <label class="form-label">Current Image:</label>
+                                    <div>
+                                        <img src="../<?php echo $edit_game['dynamic_images']; ?>" alt="<?php echo $edit_game['name']; ?>" 
+                                             onerror="this.style.display='none'">
+                                    </div>
+                                    <div class="form-text">Current game image</div>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="dynamic_images">Game Image</label>
+                                <input type="file" class="form-control" id="dynamic_images" name="dynamic_images" 
+                                       accept="image/*" onchange="previewImage(this)">
+                                <div class="form-text">Upload a landscape image for the game (JPG, PNG, GIF, WEBP - Max 5MB)</div>
+                            </div>
+                            
+                            <img id="imagePreview" class="image-preview" src="#" alt="Image preview">
+                        </div>
                         
                         <div class="form-grid">
                             <div class="form-group">
@@ -1397,6 +1624,24 @@ if (isset($_GET['edit'])) {
             });
         });
         
+        // Image preview functionality
+        function previewImage(input) {
+            const preview = document.getElementById('imagePreview');
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                }
+                
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.style.display = 'none';
+                preview.src = '#';
+            }
+        }
+        
         // Form validation
         document.getElementById('gameForm')?.addEventListener('submit', function(e) {
             const openTime = document.getElementById('open_time').value;
@@ -1422,6 +1667,26 @@ if (isset($_GET['edit'])) {
                 alert('Minimum bet must be less than maximum bet!');
                 e.preventDefault();
                 return;
+            }
+            
+            // Image file validation
+            const imageInput = document.getElementById('dynamic_images');
+            if (imageInput.files.length > 0) {
+                const file = imageInput.files[0];
+                const fileSize = file.size / 1024 / 1024; // in MB
+                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                
+                if (!allowedTypes.includes(file.type)) {
+                    alert('Please select a valid image file (JPG, JPEG, PNG, GIF, or WEBP).');
+                    e.preventDefault();
+                    return;
+                }
+                
+                if (fileSize > 5) {
+                    alert('Image size must be less than 5MB.');
+                    e.preventDefault();
+                    return;
+                }
             }
         });
         

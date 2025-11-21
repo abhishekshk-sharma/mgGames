@@ -244,7 +244,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
     <title>Withdrawals - Super Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
+<style>
     :root {
         --primary: #ff3c7e;
         --secondary: #0fb4c9;
@@ -1331,6 +1331,14 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <a href="admin_games.php" class="menu-item">
                     <i class="fa-regular fa-pen-to-square"></i>
                     <span>Edit Games</span>
+                </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
                 </a>
                 <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>

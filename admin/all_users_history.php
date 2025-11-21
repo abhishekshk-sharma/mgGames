@@ -1520,6 +1520,10 @@ foreach ($direct_bets as $direct_bet) {
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -2085,6 +2089,8 @@ foreach ($direct_bets as $direct_bet) {
             });
         });
     </script>
+
+
 </body>
 </html>
 

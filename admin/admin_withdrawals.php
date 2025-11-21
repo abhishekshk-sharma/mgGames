@@ -22,7 +22,7 @@ $admin_username = $_SESSION['admin_username'];
 $message = '';
 $message_type = '';
 
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $stmt->execute([$admin_id]);
 $referral_code  = $stmt->get_result();
 $referral_code = $referral_code->fetch_assoc();
@@ -49,6 +49,16 @@ if (isset($_POST['approve_withdrawal'])) {
 
             $message = "Withdrawal approved successfully!";
             $message_type = "success";
+
+            // Log dashboard access
+            try {
+                $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Approved Withdrawal', 'Admin approved a withdrawal of ID: $withdrawal_id', NOW())");
+                $stmt->execute([$admin_id]);
+            } catch (Exception $e) {
+                // Silently fail if logging doesn't work
+                error_log("Failed to log dashboard access: " . $e->getMessage());
+            }
+
             
             // Here you would typically process the actual payment
             // For now, we'll just update the transaction status
@@ -97,6 +107,16 @@ if (isset($_POST['reject_withdrawal'])) {
                 // Create refund transaction
                 $refund_sql = "UPDATE transactions SET amount = $amount, balance_before = balance_before, balance_after = balance_after + $amount, description = 'Withdrawal rejected: $reason', status = 'rejected' WHERE wd_id = $withdrawal_id";
                 $conn->query($refund_sql);
+
+                // Log dashboard access
+            try {
+                $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Rejected Withdrawal', 'Admin rejected a withdrawal of ID: $withdrawal_id', NOW())");
+                $stmt->execute([$admin_id]);
+            } catch (Exception $e) {
+                // Silently fail if logging doesn't work
+                error_log("Failed to log dashboard access: " . $e->getMessage());
+            }
+
             } else {
                 throw new Exception("Error updating withdrawal status: " . $conn->error);
             }
@@ -105,6 +125,8 @@ if (isset($_POST['reject_withdrawal'])) {
             $conn->commit();
             $message = "Withdrawal rejected and amount refunded!";
             $message_type = "success";
+
+            
             
         } catch (Exception $e) {
             $conn->rollback();
@@ -124,7 +146,7 @@ $filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
 $offset = ($page - 1) * $limit;
 
 // Validate limit
-$allowed_limits = [10, 20, 50, 100];
+$allowed_limits = [5, 10, 20, 50, 100];
 if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
@@ -152,7 +174,7 @@ $total_records = $result_count->fetch_assoc()['total'];
 $total_pages = ceil($total_records / $limit);
 
 // Build query for withdrawals with pagination
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $stmt->execute([$admin_id]);
 $referral_code  = $stmt->get_result();
 $referral_code = $referral_code->fetch_assoc();
@@ -1303,6 +1325,10 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -1386,20 +1412,21 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     </h2>
                     
                     <div class="controls-row">
-                        <div class="filter-form">
+                        <!-- FILTER FORM - FIXED: Added proper form wrapper -->
+                        <form method="GET" class="filter-form" id="filterForm">
                             <div class="form-group">
-                                <select name="filter_status" id="filterStatus" class="form-control" onchange="this.form.submit()">
+                                <select name="filter_status" id="filterStatus" class="form-control">
                                     <option value="">All Status</option>
                                     <option value="pending" <?php echo $filter_status === 'pending' ? 'selected' : ''; ?>>Pending</option>
                                     <option value="completed" <?php echo $filter_status === 'completed' ? 'selected' : ''; ?>>Completed</option>
-                                    <option value="failed" <?php echo $filter_status === 'failed' ? 'selected' : ''; ?>>Failed</option>
-                                    <option value="cancelled" <?php echo $filter_status === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                                    
+                                    <option value="rejected" <?php echo $filter_status === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                                 </select>
                             </div>
                             
                             <div class="limit-selector">
                                 <span class="form-label">Show:</span>
-                                <select name="limit" id="limit" class="form-control" onchange="this.form.submit()">
+                                <select name="limit" id="limit" class="form-control">
                                     <?php foreach ($allowed_limits as $allowed_limit): ?>
                                         <option value="<?php echo $allowed_limit; ?>" <?php echo $limit == $allowed_limit ? 'selected' : ''; ?>>
                                             <?php echo $allowed_limit; ?>
@@ -1407,7 +1434,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                        </div>
+                            
+                            <!-- Hidden field to preserve page parameter -->
+                            <input type="hidden" name="page" value="1">
+                            
+                            <button type="submit" class="btn btn-primary" style="display: none;" id="filterSubmit">Apply</button>
+                        </form>
                     </div>
                 </div>
 
@@ -1471,7 +1503,11 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                             <?php echo date('M j, Y g:i A', strtotime($withdrawal['created_at'])); ?>
                                         </td>
                                         <td>
+                                        <?php if($referral_code['status'] == 'suspend'):?>
+                                            <span class="text-muted">No actions</span>
+                                        <?php else:?>
                                             <div class="action-buttons">
+                                            
                                                 <?php if ($withdrawal['status'] == 'pending'): ?>
                                                     <form method="POST" style="display: inline;">
                                                         <input type="hidden" name="withdrawal_id" value="<?php echo $withdrawal['id']; ?>">
@@ -1489,6 +1525,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                                     <span class="text-muted">No actions</span>
                                                 <?php endif; ?>
                                             </div>
+                                        <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -1720,6 +1757,25 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 document.body.style.overflow = '';
             }
         });
+
+        // FILTER FUNCTIONALITY - FIXED: Added proper filter handling
+        const filterStatus = document.getElementById('filterStatus');
+        const limitSelect = document.getElementById('limit');
+        const filterForm = document.getElementById('filterForm');
+
+        // Auto-submit form when filter values change
+        if (filterStatus) {
+            filterStatus.addEventListener('change', function() {
+                filterForm.submit();
+            });
+        }
+
+        if (limitSelect) {
+            limitSelect.addEventListener('change', function() {
+                filterForm.submit();
+            });
+        }
     </script>
+
 </body>
 </html>

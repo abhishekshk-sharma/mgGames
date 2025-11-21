@@ -37,6 +37,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Password is correct, start a new session
                 $_SESSION['admin_id'] = $id;
                 $_SESSION['admin_username'] = $username;
+
+                // Log logIn action
+                try {
+                    $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Admin Login', 'Admin logged into the system', NOW())");
+                    $stmt->execute([$id]);
+                } catch (Exception $e) {
+                    // Silently fail if logging doesn't work
+                    error_log("Failed to log dashboard access: " . $e->getMessage());
+                }
                 
                 // Redirect to admin dashboard
                 header("location: dashboard.php");

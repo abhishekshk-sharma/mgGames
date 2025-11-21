@@ -1344,15 +1344,7 @@ $title = "Super Admin Dashboard - RB Games";
             margin-bottom: 2.2rem;
         }
 
-        /* Add any additional styles needed for super admin specific elements */
-        .admin-badge {
-            background: rgba(255, 193, 7, 0.2);
-            padding: 0.3rem 0.8rem;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            color: #ffc107;
-            border: 1px solid rgba(255, 193, 7, 0.3);
-        }
+        
 
         .revenue-positive {
             color: var(--success);
@@ -1360,6 +1352,43 @@ $title = "Super Admin Dashboard - RB Games";
 
         .revenue-negative {
             color: var(--danger);
+        }
+
+        /* Admin badge and time */
+        .admin-badge {
+            background: rgba(255, 60, 126, 0.2);
+            padding: 0.6rem 1.2rem;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 500;
+            border: 1px solid rgba(255, 60, 126, 0.3);
+            white-space: nowrap;
+        }
+
+        .admin-badge i {
+            color: var(--primary);
+        }
+
+        .admin-name {
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .current-time {
+            background: rgba(11, 180, 201, 0.2);
+            padding: 0.6rem 1.2rem;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 500;
+            border: 1px solid rgba(11, 180, 201, 0.3);
+            white-space: nowrap;
+        }
+
+        .current-time i {
+            color: var(--secondary);
         }
 
         /* Responsive design */
@@ -1375,6 +1404,10 @@ $title = "Super Admin Dashboard - RB Games";
             
             .sidebar.active {
                 transform: translateX(0);
+            }
+            .admin-badge, .current-time {
+                width: 100%;
+                justify-content: center;
             }
         }
     </style>
@@ -1423,6 +1456,14 @@ $title = "Super Admin Dashboard - RB Games";
                     <i class="fa-regular fa-pen-to-square"></i>
                     <span>Edit Games</span>
                 </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
+                </a>
                 <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Platform Reports</span>
@@ -1454,11 +1495,17 @@ $title = "Super Admin Dashboard - RB Games";
                     <h1>Super Admin Dashboard</h1>
                     <p>Welcome back, <span class="admin-name">Super Admin <?php echo $super_admin_username; ?></span>. Platform overview and analytics.</p>
                 </div>
-                <div class="header-actions" title="<?php echo date('l, F j, Y'); ?>">
+                <div class="header-actions">
                     <div class="current-time">
                         <i class="fas fa-clock"></i>
-                        <span><?php echo date('l, F j, Y'); ?></span>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
                     </div>
+                    
+                    <div class="admin-badge">
+                        <i class="fas fa-user-shield"></i>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
+                    </div>
+                    
                     <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>

@@ -830,6 +830,10 @@ $title = "Admin Profile - RB Games";
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -884,7 +888,12 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Username
+
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="username" data-value="<?php echo htmlspecialchars($admin_data['username']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['username']); ?></div>
                         </div>
@@ -892,7 +901,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Phone
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="phone" data-value="<?php echo htmlspecialchars($admin_data['phone']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['phone']); ?></div>
                         </div>
@@ -900,7 +913,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Email
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="email" data-value="<?php echo htmlspecialchars($admin_data['email']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['email']); ?></div>
                         </div>
@@ -908,7 +925,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 UPI ID
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="upiId" data-value="<?php echo htmlspecialchars($admin_data['upiId']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['upiId']); ?></div>
                         </div>
@@ -916,7 +937,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Address
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="address" data-value="<?php echo htmlspecialchars($admin_data['address']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['address']); ?></div>
                         </div>
@@ -959,16 +984,21 @@ $title = "Admin Profile - RB Games";
                     </div>
                 </div>
 
-                <!-- Change Password Section -->
-                <div class="profile-section">
-                    <div class="section-header">
-                        <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
+                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
+
+                    <!-- Change Password Section -->
+                    <div class="profile-section">
+                        <div class="section-header">
+                            <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
+                        </div>
+                        
+                        <button type="button" class="btn" id="changePasswordBtn">
+                            <i class="fas fa-key"></i> Change Password
+                        </button>
                     </div>
-                    
-                    <button type="button" class="btn" id="changePasswordBtn">
-                        <i class="fas fa-key"></i> Change Password
-                    </button>
-                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -1240,5 +1270,7 @@ $title = "Admin Profile - RB Games";
 
         });
     </script>
+
+
 </body>
 </html>

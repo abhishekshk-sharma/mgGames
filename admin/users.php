@@ -20,7 +20,7 @@ if (isset($_GET['ajax']) && isset($_GET['view_user'])) {
     
     // Get admin details for the referral code
     $admin_id = $_SESSION['admin_id'];
-    $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
     $stmt->execute([$admin_id]);
     $referral_result = $stmt->get_result();
     $referral_code = $referral_result->fetch_assoc();
@@ -46,7 +46,7 @@ if (isset($_GET['ajax']) && isset($_GET['view_user'])) {
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
 
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $stmt->execute([$admin_id]);
 $referral_code  = $stmt->get_result();
 $referral_code = $referral_code->fetch_assoc();
@@ -101,12 +101,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Handle delete user (with confirmation)
     if (isset($_GET['delete_user'])) {
         $user_id = intval($_GET['delete_user']);
-        if (deleteUser($conn, $user_id)) {
-            $_SESSION['success_message'] = "User deleted successfully!";
-        } else {
-            $_SESSION['error_message'] = "Error deleting user!";
+
+        $stmt = $conn->prepare("SELECT * FROM admin_requests WHERE user_id = ? AND title = 'User Deletion' AND status = 'pending'");
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $pre_result = $stmt->get_result();
+        $result = $pre_result->num_rows;
+        if ($result > 0) {
+            $_SESSION['error_message'] = "A deletion request for this user is already pending.";
+            header("Location: users.php");
+            exit;
         }
-        header("Location: users.php");
+        else{
+            
+
+            if (deleteUser($conn, $user_id)) {
+                $_SESSION['success_message'] = "Request to delete user submitted successfully!";
+                header("Location: users.php");
+            } else {
+                $_SESSION['error_message'] = "Error deleting user!";
+            }
+            header("Location: users.php");
+        }
         exit;
     }
 }
@@ -260,7 +276,7 @@ function displayTransactionsTab($user_transactions, $current_page, $per_page) {
 function getUsers($conn, $search = '', $date_from = '', $date_to = '') {
     // Get admin details
     $admin_id = $_SESSION['admin_id'];
-    $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
     $stmt->execute([$admin_id]);
     $referral_result = $stmt->get_result();
     $referral_code = $referral_result->fetch_assoc();
@@ -309,7 +325,7 @@ function getUsers($conn, $search = '', $date_from = '', $date_to = '') {
 function getUserDetails($conn, $user_id) {
     // Get admin details
     $admin_id = $_SESSION['admin_id'];
-    $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
     $stmt->execute([$admin_id]);
     $referral_result = $stmt->get_result();
     $referral_code = $referral_result->fetch_assoc();
@@ -438,29 +454,51 @@ function unbanUser($conn, $user_id) {
 
 // Function to delete user
 function deleteUser($conn, $user_id) {
+
+    $user_id = intval($user_id);
     // Start transaction
     $conn->begin_transaction();
     
     try {
-        // Delete user related data first
-        $tables = ['bets', 'payouts', 'transactions', 'user_sessions'];
-        foreach ($tables as $table) {
-            $sql = "DELETE FROM $table WHERE user_id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param('i', $user_id);
-            $stmt->execute();
-        }
-        
-        // Delete the user
-        $sql = "DELETE FROM users WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param('i', $user_id);
+
+        $stmt = $conn->prepare("SELECT * FROM admin_requests wHERE user_id = ? AND status = 'pending' AND title = 'User Deletion'");
+        $stmt->bind_param("i", $user_id);
         $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows > 0) {
+            $_SESSION['error_message'] = "There is already a pending user deletion request for this user.";
+            header("Location: users.php");
+            exit();
+        }
+
+        $admin_id = isset($_SESSION['admin_id'])? intval($_SESSION['admin_id']) : 0;
+        $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
+        $stmt->bind_param('i', $admin_id);
+        $stmt->execute();
+        $referral_result = $stmt->get_result();
+        $get_admin_name = $referral_result->fetch_assoc();
+        $referral_result->free();   // <-- important
+        $stmt->close();
+
+
+        // Delete user related data first
+        $title = "User Deletion";
+        $description = "User account deleted by admin: " . $get_admin_name['username'];
+        $delete_stmt = $conn->prepare("INSERT INTO `admin_requests`( `admin_id`, `user_id`, `title`, `description`, `status`, `created_at`) VALUES (?,?,?,?,'pending',NOW())");
+        $delete_stmt->bind_param("iiss", $admin_id, $user_id, $title, $description);
+        $delete_stmt->execute();
+        
+       
         
         $conn->commit();
+        $_SESSION['success_message'] = "Request to delete user submitted successfully!";
+        
+        
+        
         return true;
     } catch (Exception $e) {
-        $conn->rollback();
+        
+        try { $conn->rollback(); } catch (Exception $rollbackError) {}
         return false;
     }
 }
@@ -1319,7 +1357,10 @@ function deleteUser($conn, $user_id) {
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
-                
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -1421,18 +1462,23 @@ function deleteUser($conn, $user_id) {
                                             <button class="btn btn-primary btn-sm view-user" data-user-id="<?php echo $user['id']; ?>" onclick="window.location.href = 'viewuser.php?id=<?= $user['id'] ?>'">
                                                 <i class="fas fa-eye"></i> View
                                             </button>
-                                            <?php if ($user['status'] === 'active'): ?>
-                                                <a href="users.php?ban_user=<?php echo $user['id']; ?>" class="btn btn-warning btn-sm">
-                                                    <i class="fas fa-ban"></i> Ban
-                                                </a>
-                                            <?php else: ?>
-                                                <a href="users.php?unban_user=<?php echo $user['id']; ?>" class="btn btn-success btn-sm">
-                                                    <i class="fas fa-check"></i> Unban
-                                                </a>
+
+                                            <?php if($referral_code['status'] == 'suspend'):?>
+                            
+                                            <?php else:?>
+                                                <?php if ($user['status'] === 'active'): ?>
+                                                    <a href="users.php?ban_user=<?php echo $user['id']; ?>" class="btn btn-warning btn-sm">
+                                                        <i class="fas fa-ban"></i> Ban
+                                                    </a>
+                                                <?php else: ?>
+                                                    <a href="users.php?unban_user=<?php echo $user['id']; ?>" class="btn btn-success btn-sm">
+                                                        <i class="fas fa-check"></i> Unban
+                                                    </a>
+                                                <?php endif; ?>
+                                                <button class="btn btn-danger btn-sm delete-user" data-user-id="<?php echo $user['id']; ?>" data-username="<?php echo htmlspecialchars($user['username']); ?>">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
                                             <?php endif; ?>
-                                            <button class="btn btn-danger btn-sm delete-user" data-user-id="<?php echo $user['id']; ?>" data-username="<?php echo htmlspecialchars($user['username']); ?>">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1550,6 +1596,9 @@ function deleteUser($conn, $user_id) {
             </div>
         </div>
     </div>
+
+<!-- SweetAlert2 latest from jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 
 <script>
@@ -1757,18 +1806,26 @@ function deleteUser($conn, $user_id) {
 
     <?php if (isset($_SESSION['success_message'])): ?>
         setTimeout(() => {
-            alert('<?php echo $_SESSION['success_message']; ?>');
+            Swal.fire({'title': "Success"  ,
+                'text':'<?php echo $_SESSION['success_message']; ?>',
+                'icon':'success',
+                'confirmButtonText':'OK'});
         }, 100);
         <?php unset($_SESSION['success_message']); ?>
     <?php endif; ?>
     
     <?php if (isset($_SESSION['error_message'])): ?>
         setTimeout(() => {
-            alert('Error: <?php echo $_SESSION['error_message']; ?>');
+            Swal.fire({'title': "Error"  ,
+                'text':'<?php echo $_SESSION['error_message']; ?>',
+                'icon':'error',
+                'confirmButtonText':'OK'});
         }, 100);
         <?php unset($_SESSION['error_message']); ?>
     <?php endif; ?>
 </script>
+
+
 </body>
 </html>
 

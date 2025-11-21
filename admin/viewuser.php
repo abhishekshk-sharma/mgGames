@@ -25,7 +25,7 @@ if (!$user) {
 // Get admin details for referral code
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
-$admin_stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$admin_stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $admin_stmt->bind_param("i", $admin_id);
 $admin_stmt->execute();
 $referral_result = $admin_stmt->get_result();
@@ -215,22 +215,53 @@ $user_transactions = getUserTransactionsPaginated($conn, $user_id, $transactions
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_balance'])) {
     $new_balance = $_POST['new_balance'];
     $reason = sanitize_input($conn, $_POST['reason']);
+
+
+    $stmt = $conn->prepare("SELECT * FROM admin_requests wHERE user_id = ? AND status = 'pending' AND title = 'Balance Update Request'");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+
+        $update_stmt = $conn->prepare("UPDATE `admin_requests` SET  `amount` = ? WHERE user_id = ? AND status = 'pending' AND title = 'Balance Update Request'");
+        $update_stmt->bind_param("di", $new_balance, $user_id   );
+        $update_stmt->execute();
+
+
+        $_SESSION['success_message'] = "Request to update user balance updated successfully!";
+        header("Location: viewuser.php?id=" . $user_id . "&tab=" . $active_tab);
+        exit();
+    }
+
+
+    $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+
+    $previous_amount = $user['balance'];
+
+
+
     
+    $title = 'Balance Update Request';
+    $description = "Admin $admin_username requested a balance update for user {$user['username']} from $previous_amount to $new_balance (".($new_balance - $previous_amount)." Rs). Reason: $reason";  
     // Update user balance
-    $update_stmt = $conn->prepare("UPDATE users SET balance = ? WHERE id = ?");
-    $update_stmt->bind_param("di", $new_balance, $user_id);
+    $update_stmt = $conn->prepare("INSERT INTO `admin_requests`( `admin_id`, `user_id`, `amount`, `title`, `description`, `status`, `created_at`) VALUES (?,?,?,?,?,'pending',NOW())");
+    $update_stmt->bind_param("iidss", $admin_id, $user_id, $new_balance, $title, $description);
     $update_stmt->execute();
     
     // Log the transaction
-    $transaction_stmt = $conn->prepare("
-        INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, description, status) 
-        VALUES (?, 'adjustment', ?, ?, ?, ?, 'completed')
-    ");
-    $amount_diff = $new_balance - $user['balance'];
-    $transaction_stmt->bind_param("iddds", $user_id, $amount_diff, $user['balance'], $new_balance, $reason);
-    $transaction_stmt->execute();
+    // $transaction_stmt = $conn->prepare("
+    //     INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, description, status) 
+    //     VALUES (?, 'adjustment', ?, ?, ?, ?, 'completed')
+    // ");
+    // $amount_diff = $new_balance - $user['balance'];
+    // $transaction_stmt->bind_param("iddds", $user_id, $amount_diff, $user['balance'], $new_balance, $reason);
+    // $transaction_stmt->execute();
     
-    $_SESSION['success_message'] = "User balance updated successfully!";
+    $_SESSION['success_message'] = " Request to update user balance submitted successfully!";
     header("Location: viewuser.php?id=" . $user_id . "&tab=" . $active_tab);
     exit();
 }
@@ -250,11 +281,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_status'])) {
 
 // Handle delete user
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
-    $delete_stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
-    $delete_stmt->bind_param("i", $user_id);
+
+    $stmt = $conn->prepare("SELECT * FROM admin_requests wHERE user_id = ? AND status = 'pending' AND title = 'User Deletion'");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $_SESSION['error_message'] = "There is already a pending user deletion request for this user.";
+        header("Location: viewuser.php?id=" . $user_id . "&tab=" . $active_tab);
+        exit();
+    }
+
+    $title = "User Deletion";
+    $description = "User account deleted by admin: " . $admin_username;
+    $delete_stmt = $conn->prepare("INSERT INTO `admin_requests`( `admin_id`, `user_id`, `title`, `description`, `status`, `created_at`) VALUES (?,?,?,?,'pending',NOW())");
+    $delete_stmt->bind_param("iiss", $admin_id, $user_id, $title, $description);
     $delete_stmt->execute();
     
-    $_SESSION['success_message'] = "User deleted successfully!";
+    $_SESSION['success_message'] = "Request to delete user submitted successfully!";
     header("Location: users.php");
     exit();
 }
@@ -857,6 +901,12 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
             color: var(--success);
             border-color: rgba(0, 184, 148, 0.3);
         }
+        
+        .alert-danger {
+            background: rgba(214, 48, 49, 0.2);
+            color: var(--danger);
+            border-color: rgba(214, 48, 49, 0.3);
+        }
 
         .tbody {
             position: relative;
@@ -1018,6 +1068,10 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -1058,6 +1112,13 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                     <?= $_SESSION['success_message'] ?>
                 </div>
                 <?php unset($_SESSION['success_message']); ?>
+            <?php endif; ?>
+            
+            <?php if (isset($_SESSION['error_message'])): ?>
+                <div class="alert alert-danger">
+                    <?= $_SESSION['error_message'] ?>
+                </div>
+                <?php unset($_SESSION['error_message']); ?>
             <?php endif; ?>
 
             <!-- Financial Summary -->
@@ -1136,19 +1197,28 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                             <label class="form-label">Current Balance</label>
                             <input type="text" class="form-control" value="₹<?= number_format($user['balance'], 2) ?>" readonly>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">New Balance</label>
-                            <input type="number" step="0.01" class="form-control" name="new_balance" value="<?= $user['balance'] ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Reason</label>
-                            <input type="text" class="form-control" name="reason" placeholder="Reason for balance adjustment" required>
-                        </div>
-                        <div class="form-group">
-                            <button type="submit" name="update_balance" class="btn btn-warning">
-                                <i class="fas fa-sync-alt"></i> Update Balance
-                            </button>
-                        </div>
+                        <?php if($referral_code['status'] == 'suspend'):?>
+                            
+                        <?php else:?>
+                                
+                            <div class="form-group">
+                                <label class="form-label">New Balance</label>
+                                <input type="number" step="0.01" class="form-control" name="new_balance" value="<?= $user['balance'] ?>" 
+                                <?php 
+                                if($referral_code['status'] == 'suspend'){ 
+                                    echo 'readonly'; 
+                                }?> required >
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Reason</label>
+                                <input type="text" class="form-control" name="reason" placeholder="Reason for balance adjustment" required>
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" name="update_balance" class="btn btn-warning">
+                                    <i class="fas fa-sync-alt"></i>Request to Update Balance
+                                </button>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </form>
             </div>
@@ -1159,6 +1229,9 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                     <h3 class="card-title">User Management</h3>
                 </div>
                 <div class="action-buttons">
+                    <?php if($referral_code['status'] == 'suspend'):?>
+                            
+                    <?php else:?>
                     <form method="POST" style="display: inline;">
                         <select name="status" class="form-control" style="width: auto; display: inline-block; margin-right: 1rem; background-color: var(--dark); color: var(--text-light);">
                             <option value="active" <?= $user['status'] == 'active' ? 'selected' : '' ?>>Active</option>
@@ -1175,6 +1248,8 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                             <i class="fas fa-trash"></i> Delete User
                         </button>
                     </form>
+
+                    <?php endif; ?>
                     
                     <a href="users.php" class="btn btn-secondary">
                         <i class="fas fa-arrow-left"></i> Back to Users
@@ -1430,5 +1505,6 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
             });
         });
     </script>
+
 </body>
 </html>

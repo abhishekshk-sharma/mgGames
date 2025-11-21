@@ -1,5 +1,5 @@
 <?php
-// super_admin_deposits.php
+// adminlog.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -17,96 +17,13 @@ if (!isset($_SESSION['super_admin_id'])) {
 $super_admin_id = $_SESSION['super_admin_id'];
 $super_admin_username = $_SESSION['super_admin_username'];
 
-// Handle deposit actions
-$message = '';
-$message_type = '';
-
-// Approve deposit
-if (isset($_POST['approve_deposit'])) {
-    $deposit_id = $_POST['deposit_id'];
-    
-    // Start transaction
-    $conn->begin_transaction();
-    
-    try {
-        // Get deposit details
-        $sql = "SELECT d.*, u.balance as user_balance, u.id as user_id
-                FROM deposits d 
-                JOIN users u ON d.user_id = u.id
-                WHERE d.id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $deposit_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result && $result->num_rows > 0) {
-            $deposit = $result->fetch_assoc();
-            $user_id = $deposit['user_id'];
-            $amount = $deposit['amount'];
-            $current_balance = $deposit['user_balance'];
-            $new_balance = $current_balance + $amount;
-            
-            // Update deposit status
-            $update_sql = "UPDATE deposits SET status = 'approved' WHERE id = ?";
-            $stmt = $conn->prepare($update_sql);
-            $stmt->bind_param("i", $deposit_id);
-            $stmt->execute();
-            
-            // Update user balance
-            $user_sql = "UPDATE users SET balance = ? WHERE id = ?";
-            $stmt = $conn->prepare($user_sql);
-            $stmt->bind_param("di", $new_balance, $user_id);
-            $stmt->execute();
-            
-            // Update transaction record
-            $transaction_sql = "UPDATE transactions SET status = 'completed', balance_after = ? WHERE wd_id = ? AND type = 'deposit'";
-            $stmt = $conn->prepare($transaction_sql);
-            $stmt->bind_param("di", $new_balance, $deposit_id);
-            $stmt->execute();
-            
-            $conn->commit();
-            $message = "Deposit approved successfully! User balance updated.";
-            $message_type = "success";
-        } else {
-            throw new Exception("Deposit not found!");
-        }
-    } catch (Exception $e) {
-        $conn->rollback();
-        $message = "Error approving deposit: " . $e->getMessage();
-        $message_type = "error";
-    }
-}
-
-// Reject deposit
-if (isset($_POST['reject_deposit'])) {
-    $deposit_id = $_POST['deposit_id'];
-    $reason = $conn->real_escape_string($_POST['reject_reason']);
-    
-    $sql = "UPDATE deposits SET status = 'rejected', admin_notes = ? WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("si", $reason, $deposit_id);
-    
-    if ($stmt->execute()) {
-        // Update transaction record
-        $transaction_sql = "UPDATE transactions SET status = 'rejected' WHERE wd_id = ? AND type = 'deposit'";
-        $stmt = $conn->prepare($transaction_sql);
-        $stmt->bind_param("i", $deposit_id);
-        
-        if ($stmt->execute()) {
-            $message = "Deposit rejected successfully!";
-            $message_type = "success";
-        }
-    } else {
-        $message = "Error rejecting deposit: " . $conn->error;
-        $message_type = "error";
-    }
-}
-
 // Pagination and filtering setup
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
 $search_admin = isset($_GET['search_admin']) ? trim($_GET['search_admin']) : '';
+$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : '';
+$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : '';
+
 $offset = ($page - 1) * $limit;
 
 // Validate limit
@@ -115,11 +32,10 @@ if (!in_array($limit, $allowed_limits)) {
     $limit = 20;
 }
 
-// Build query for deposits count
-$count_sql = "SELECT COUNT(d.id) as total 
-              FROM deposits d 
-              JOIN users u ON d.user_id = u.id 
-              JOIN admins a ON u.referral_code = a.referral_code 
+// Build query for admin logs count
+$count_sql = "SELECT COUNT(al.id) as total 
+              FROM admin_logs al 
+              LEFT JOIN admins a ON al.admin_id = a.id 
               WHERE 1=1";
 $params = [];
 $types = '';
@@ -131,9 +47,18 @@ if ($search_admin) {
     $types .= 'ss';
 }
 
-if ($filter_status) {
-    $count_sql .= " AND d.status = ?";
-    $params[] = $filter_status;
+if ($start_date && $end_date) {
+    $count_sql .= " AND DATE(al.created_at) BETWEEN ? AND ?";
+    $params[] = $start_date;
+    $params[] = $end_date;
+    $types .= 'ss';
+} elseif ($start_date) {
+    $count_sql .= " AND DATE(al.created_at) >= ?";
+    $params[] = $start_date;
+    $types .= 's';
+} elseif ($end_date) {
+    $count_sql .= " AND DATE(al.created_at) <= ?";
+    $params[] = $end_date;
     $types .= 's';
 }
 
@@ -146,23 +71,25 @@ $result_count = $stmt_count->get_result();
 $total_records = $result_count->fetch_assoc()['total'];
 $total_pages = ceil($total_records / $limit);
 
-// Build query for deposits with pagination
-$sql = "SELECT d.*, u.username, u.email, u.phone, u.balance as user_balance,
-               a.username as admin_username, a.id as admin_id
-        FROM deposits d 
-        JOIN users u ON d.user_id = u.id 
-        JOIN admins a ON u.referral_code = a.referral_code 
+// Build query for admin logs with pagination
+$sql = "SELECT al.*, a.username as admin_username
+        FROM admin_logs al 
+        LEFT JOIN admins a ON al.admin_id = a.id 
         WHERE 1=1";
 
 if ($search_admin) {
     $sql .= " AND (a.username LIKE ? OR a.id = ?)";
 }
 
-if ($filter_status) {
-    $sql .= " AND d.status = ?";
+if ($start_date && $end_date) {
+    $sql .= " AND DATE(al.created_at) BETWEEN ? AND ?";
+} elseif ($start_date) {
+    $sql .= " AND DATE(al.created_at) >= ?";
+} elseif ($end_date) {
+    $sql .= " AND DATE(al.created_at) <= ?";
 }
 
-$sql .= " ORDER BY d.created_at DESC LIMIT ? OFFSET ?";
+$sql .= " ORDER BY al.created_at DESC LIMIT ? OFFSET ?";
 
 $stmt = $conn->prepare($sql);
 $params = [];
@@ -174,8 +101,15 @@ if ($search_admin) {
     $types .= 'ss';
 }
 
-if ($filter_status) {
-    $params[] = $filter_status;
+if ($start_date && $end_date) {
+    $params[] = $start_date;
+    $params[] = $end_date;
+    $types .= 'ss';
+} elseif ($start_date) {
+    $params[] = $start_date;
+    $types .= 's';
+} elseif ($end_date) {
+    $params[] = $end_date;
     $types .= 's';
 }
 
@@ -189,43 +123,63 @@ if (!empty($params)) {
 
 $stmt->execute();
 $result = $stmt->get_result();
-$deposits = [];
+$admin_logs = [];
 
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
-        $deposits[] = $row;
+        $admin_logs[] = $row;
     }
 }
 
 // Get stats for dashboard
-$pending_deposits = 0;
-$total_pending_amount = 0;
-$total_deposit_amount = 0;
+$total_logs = 0;
+$unique_admins = 0;
+$today_logs = 0;
 
 $stats_sql = "SELECT 
-    COUNT(d.id) as pending_count,
-    SUM(d.amount) as pending_amount,
-    (SELECT SUM(amount) FROM deposits WHERE status = 'approved') as total_amount 
-    FROM deposits d 
-    JOIN users u ON d.user_id = u.id 
-    JOIN admins a ON u.referral_code = a.referral_code 
-    WHERE d.status = 'pending'";
+    COUNT(al.id) as total_logs,
+    COUNT(DISTINCT al.admin_id) as unique_admins,
+    COUNT(CASE WHEN DATE(al.created_at) = CURDATE() THEN 1 END) as today_logs
+    FROM admin_logs al 
+    LEFT JOIN admins a ON al.admin_id = a.id 
+    WHERE 1=1";
     
+$stats_params = [];
+$stats_types = '';
+
 if ($search_admin) {
     $stats_sql .= " AND (a.username LIKE ? OR a.id = ?)";
+    $stats_params[] = "%$search_admin%";
+    $stats_params[] = $search_admin;
+    $stats_types .= 'ss';
+}
+
+if ($start_date && $end_date) {
+    $stats_sql .= " AND DATE(al.created_at) BETWEEN ? AND ?";
+    $stats_params[] = $start_date;
+    $stats_params[] = $end_date;
+    $stats_types .= 'ss';
+} elseif ($start_date) {
+    $stats_sql .= " AND DATE(al.created_at) >= ?";
+    $stats_params[] = $start_date;
+    $stats_types .= 's';
+} elseif ($end_date) {
+    $stats_sql .= " AND DATE(al.created_at) <= ?";
+    $stats_params[] = $end_date;
+    $stats_types .= 's';
 }
 
 $stmt_stats = $conn->prepare($stats_sql);
-if ($search_admin) {
-    $stmt_stats->bind_param("ss", $search_admin, $search_admin);
+if (!empty($stats_params)) {
+    $stmt_stats->bind_param($stats_types, ...$stats_params);
 }
 $stmt_stats->execute();
 $stats_result = $stmt_stats->get_result();
 if ($stats_result && $stats_result->num_rows > 0) {
     $stats = $stats_result->fetch_assoc();
-    $pending_deposits = $stats['pending_count'];
-    $total_pending_amount = $stats['pending_amount'] ? $stats['pending_amount'] : 0;
-    $total_deposit_amount = $stats['total_amount'] ? $stats['total_amount'] : 0;
+    $total_logs = $stats['total_logs'];
+    $unique_admins = $stats['unique_admins'];
+    $today_logs = $stats['today_logs'];
 }
 ?>
 <!DOCTYPE html>
@@ -233,7 +187,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deposits - Super Admin</title>
+    <title>Admin Logs - Super Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -545,17 +499,17 @@ if ($stats_result && $stats_result->num_rows > 0) {
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
 
-        .pending-icon {
-            background: rgba(253, 203, 110, 0.2);
-            color: var(--warning);
-        }
-
-        .amount-icon {
+        .total-icon {
             background: rgba(255, 60, 126, 0.2);
             color: var(--primary);
         }
 
-        .total-icon {
+        .admin-icon {
+            background: rgba(11, 180, 201, 0.2);
+            color: var(--secondary);
+        }
+
+        .today-icon {
             background: rgba(0, 184, 148, 0.2);
             color: var(--success);
         }
@@ -578,7 +532,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         .data-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1100px;
+            min-width: 1000px;
         }
 
         .data-table th, .data-table td {
@@ -603,49 +557,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
             background: rgba(255, 255, 255, 0.05);
         }
 
-        .status {
-            padding: 0.4rem 1rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            display: inline-block;
-        }
-
-        .status-pending {
-            background: rgba(253, 203, 110, 0.2);
-            color: var(--warning);
-            border: 1px solid rgba(253, 203, 110, 0.3);
-        }
-
-        .status-approved {
-            background: rgba(0, 184, 148, 0.2);
-            color: var(--success);
-            border: 1px solid rgba(0, 184, 148, 0.3);
-        }
-
-        .status-rejected {
-            background: rgba(214, 48, 49, 0.2);
-            color: var(--danger);
-            border: 1px solid rgba(214, 48, 49, 0.3);
-        }
-
-        .status-cancelled {
-            background: rgba(108, 117, 125, 0.2);
-            color: #6c757d;
-            border: 1px solid rgba(108, 117, 125, 0.3);
-        }
-
-        .payment-method {
-            padding: 0.3rem 0.8rem;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            display: inline-block;
-            background: rgba(11, 180, 201, 0.2);
-            color: var(--secondary);
-            border: 1px solid rgba(11, 180, 201, 0.3);
-        }
-
         .admin-info {
             padding: 0.3rem 0.8rem;
             border-radius: 15px;
@@ -655,6 +566,16 @@ if ($stats_result && $stats_result->num_rows > 0) {
             background: rgba(255, 60, 126, 0.2);
             color: var(--primary);
             border: 1px solid rgba(255, 60, 126, 0.3);
+        }
+
+        .log-title {
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        .log-description {
+            color: var(--text-muted);
+            font-size: 0.9rem;
         }
 
         /* Filter and Controls */
@@ -700,7 +621,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
             color: var(--text-light);
             font-size: 0.9rem;
             transition: all 0.3s ease;
-            min-width: 120px;
+            min-width: 150px;
         }
 
         .form-control:focus {
@@ -713,6 +634,16 @@ if ($stats_result && $stats_result->num_rows > 0) {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
             color: var(--text-light);
+        }
+
+        .date-inputs {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .date-inputs .form-control {
+            min-width: 140px;
         }
 
         .btn {
@@ -748,37 +679,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
 
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.2);
-        }
-
-        .btn-success {
-            background: rgba(0, 184, 148, 0.2);
-            color: var(--success);
-            border: 1px solid rgba(0, 184, 148, 0.3);
-        }
-
-        .btn-success:hover {
-            background: rgba(0, 184, 148, 0.3);
-        }
-
-        .btn-danger {
-            background: rgba(214, 48, 49, 0.2);
-            color: var(--danger);
-            border: 1px solid rgba(214, 48, 49, 0.3);
-        }
-
-        .btn-danger:hover {
-            background: rgba(214, 48, 49, 0.3);
-        }
-
-        .btn-sm {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.8rem;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
         }
 
         /* Admin badge and time */
@@ -828,20 +728,20 @@ if ($stats_result && $stats_result->num_rows > 0) {
         }
 
         /* Card view for mobile */
-        .deposits-cards {
+        .logs-cards {
             display: none;
             flex-direction: column;
             gap: 1rem;
         }
 
-        .deposit-card {
+        .log-card {
             background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
             padding: 1rem;
             border: 1px solid var(--border-color);
         }
 
-        .deposit-row {
+        .log-row {
             display: flex;
             justify-content: space-between;
             margin-bottom: 0.5rem;
@@ -849,125 +749,20 @@ if ($stats_result && $stats_result->num_rows > 0) {
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .deposit-row:last-child {
+        .log-row:last-child {
             margin-bottom: 0;
             border-bottom: none;
         }
 
-        .deposit-label {
+        .log-label {
             color: var(--text-muted);
             font-weight: 500;
             min-width: 120px;
         }
 
-        .deposit-value {
+        .log-value {
             text-align: right;
             flex: 1;
-        }
-
-        .deposit-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-            flex-wrap: wrap;
-        }
-
-        /* Payment proof image */
-        .payment-proof {
-            max-width: 200px;
-            max-height: 150px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: transform 0.3s ease;
-        }
-
-        .payment-proof:hover {
-            transform: scale(1.05);
-        }
-
-        /* Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-            padding: 1rem;
-        }
-
-        .modal-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 2rem;
-            max-width: 600px;
-            width: 100%;
-            max-height: 90vh;
-            overflow-y: auto;
-            border: 1px solid var(--border-color);
-            transform: translateY(-20px);
-            transition: transform 0.3s ease;
-        }
-
-        .modal-overlay.active .modal-content {
-            transform: translateY(0);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0;
-        }
-
-        .proof-image {
-            max-width: 100%;
-            max-height: 400px;
-            border-radius: 8px;
-            margin: 1rem 0;
-        }
-
-        /* Alert Messages */
-        .alert {
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-            border: 1px solid;
-        }
-
-        .alert-success {
-            background: rgba(0, 184, 148, 0.2);
-            border-color: rgba(0, 184, 148, 0.3);
-            color: var(--success);
-        }
-
-        .alert-error {
-            background: rgba(214, 48, 49, 0.2);
-            border-color: rgba(214, 48, 49, 0.3);
-            color: var(--danger);
         }
 
         /* Responsive Design */
@@ -1127,7 +922,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 display: none;
             }
             
-            .deposits-cards {
+            .logs-cards {
                 display: flex;
             }
             
@@ -1152,6 +947,15 @@ if ($stats_result && $stats_result->num_rows > 0) {
             
             .form-control {
                 min-width: 100%;
+            }
+            
+            .date-inputs {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .date-inputs .form-control {
+                flex: 1;
             }
         }
 
@@ -1190,11 +994,11 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 padding: 0 0.8rem;
             }
             
-            .deposit-card {
+            .log-card {
                 padding: 0.8rem;
             }
             
-            .deposit-label {
+            .log-label {
                 min-width: 100px;
                 font-size: 0.9rem;
             }
@@ -1204,17 +1008,8 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 font-size: 0.85rem;
             }
             
-            .btn-sm {
-                padding: 0.4rem 0.8rem;
-                font-size: 0.8rem;
-            }
-            
             .stat-card-value {
                 font-size: 2rem;
-            }
-            
-            .payment-proof {
-                max-width: 150px;
             }
         }
 
@@ -1251,26 +1046,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
             .stat-card-value {
                 font-size: 1.8rem;
             }
-            
-            .deposit-actions {
-                flex-direction: column;
-            }
-            
-            .deposit-actions .btn {
-                width: 100%;
-                justify-content: center;
-            }
-        }
-
-        .admin-info {
-            padding: 0.3rem 0.8rem;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            display: inline-block;
-            background: rgba(255, 60, 126, 0.2);
-            color: var(--primary);
-            border: 1px solid rgba(255, 60, 126, 0.3);
         }
     </style>
 </head>
@@ -1282,49 +1057,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
 
     <!-- Sidebar Overlay for Mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-    <!-- Reject Modal -->
-    <div class="modal-overlay" id="rejectModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Reject Deposit</h3>
-                <button class="modal-close" id="modalClose">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <form method="POST" id="rejectForm">
-                <input type="hidden" name="deposit_id" id="rejectDepositId">
-                <div class="form-group">
-                    <label class="form-label" for="reject_reason">Reason for Rejection</label>
-                    <textarea class="form-control" id="reject_reason" name="reject_reason" rows="4" placeholder="Enter reason for rejecting this deposit..." required></textarea>
-                </div>
-                <div class="form-group mt-3">
-                    <button type="submit" name="reject_deposit" class="btn btn-danger">
-                        <i class="fas fa-times-circle"></i> Confirm Rejection
-                    </button>
-                    <button type="button" class="btn btn-secondary" id="cancelReject">
-                        <i class="fas fa-arrow-left"></i> Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Payment Proof Modal -->
-    <div class="modal-overlay" id="proofModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Payment Proof</h3>
-                <button class="modal-close" id="proofModalClose">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="text-center">
-                <img id="proofImage" src="" alt="Payment Proof" class="proof-image">
-                <div class="mt-2" id="proofInfo"></div>
-            </div>
-        </div>
-    </div>
 
     <div class="admin-container">
         <!-- Sidebar -->
@@ -1353,9 +1085,17 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     <i class="fas fa-credit-card"></i>
                     <span>All Withdrawals</span>
                 </a>
-                <a href="super_admin_deposits.php" class="menu-item active">
+                <a href="super_admin_deposits.php" class="menu-item">
                     <i class="fas fa-money-bill-wave"></i>
                     <span>All Deposits</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
+                </a>
+                <a href="adminlog.php" class="menu-item active">
+                    <i class="fas fa-history"></i>
+                    <span>Admin Logs</span>
                 </a>
                 <a href="admin_games.php" class="menu-item">
                     <i class="fa-regular fa-pen-to-square"></i>
@@ -1364,10 +1104,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <a href="edit_result.php" class="menu-item ">
                     <i class="fa-solid fa-puzzle-piece"></i>
                     <span>Edit Result</span>
-                </a>
-                <a href="super_admin_applications.php" class="menu-item">
-                    <i class="fas fa-tasks"></i>
-                    <span>All Applications</span>
                 </a>
                 <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
@@ -1397,8 +1133,8 @@ if ($stats_result && $stats_result->num_rows > 0) {
         <div class="main-content">
             <div class="header">
                 <div class="welcome">
-                    <h1>Deposits Management</h1>
-                    <p>Manage user deposit requests across all admins</p>
+                    <h1>Admin Activity Logs</h1>
+                    <p>Monitor all admin activities across the platform</p>
                 </div>
                 <div class="header-actions">
                     <div class="current-time">
@@ -1418,53 +1154,46 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 </div>
             </div>
 
-            <!-- Alert Messages -->
-            <?php if ($message): ?>
-                <div class="alert alert-<?php echo $message_type === 'success' ? 'success' : 'error'; ?>">
-                    <?php echo $message; ?>
-                </div>
-            <?php endif; ?>
-
             <!-- Stats Cards -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-card-header">
-                        <div class="stat-card-title">Pending Deposits</div>
-                        <div class="stat-card-icon pending-icon">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                    </div>
-                    <div class="stat-card-value"><?php echo $pending_deposits; ?></div>
-                    <div class="stat-card-desc">Awaiting approval</div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div class="stat-card-title">Pending Amount</div>
-                        <div class="stat-card-icon amount-icon">
-                            <i class="fas fa-dollar-sign"></i>
-                        </div>
-                    </div>
-                    <div class="stat-card-value">$<?php echo number_format($total_pending_amount, 2); ?></div>
-                    <div class="stat-card-desc">Total pending amount</div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div class="stat-card-title">Total Deposits</div>
+                        <div class="stat-card-title">Total Logs</div>
                         <div class="stat-card-icon total-icon">
-                            <i class="fas fa-money-bill-wave"></i>
+                            <i class="fas fa-list-alt"></i>
                         </div>
                     </div>
-                    <div class="stat-card-value">$<?php echo number_format($total_deposit_amount, 2); ?></div>
-                    <div class="stat-card-desc">All approved deposits</div>
+                    <div class="stat-card-value"><?php echo $total_logs; ?></div>
+                    <div class="stat-card-desc">All admin activities</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <div class="stat-card-title">Unique Admins</div>
+                        <div class="stat-card-icon admin-icon">
+                            <i class="fas fa-user-shield"></i>
+                        </div>
+                    </div>
+                    <div class="stat-card-value"><?php echo $unique_admins; ?></div>
+                    <div class="stat-card-desc">Active administrators</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <div class="stat-card-title">Today's Logs</div>
+                        <div class="stat-card-icon today-icon">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                    </div>
+                    <div class="stat-card-value"><?php echo $today_logs; ?></div>
+                    <div class="stat-card-desc">Activities today</div>
                 </div>
             </div>
 
-            <!-- Deposits Table -->
+            <!-- Admin Logs Table -->
             <div class="dashboard-section">
                 <div class="section-header">
-                    <h2 class="section-title"><i class="fas fa-money-bill"></i> Deposit Requests</h2>
+                    <h2 class="section-title"><i class="fas fa-history"></i> Admin Activity Logs</h2>
                     <div class="view-all">Total: <?php echo $total_records; ?></div>
                 </div>
 
@@ -1477,20 +1206,16 @@ if ($stats_result && $stats_result->num_rows > 0) {
                                    value="<?php echo htmlspecialchars($search_admin); ?>">
                         </div>
                         
-                        <div class="form-group">
-                            <select name="filter_status" class="form-control" onchange="this.form.submit()">
-                                <option value="">All Statuses</option>
-                                <option value="pending" <?php echo $filter_status == 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                <option value="approved" <?php echo $filter_status == 'approved' ? 'selected' : ''; ?>>Approved</option>
-                                <option value="rejected" <?php echo $filter_status == 'rejected' ? 'selected' : ''; ?>>Rejected</option>
-                                <option value="cancelled" <?php echo $filter_status == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                            </select>
+                        <div class="date-inputs">
+                            <input type="date" name="start_date" class="form-control" value="<?php echo $start_date; ?>" placeholder="From Date">
+                            <span>to</span>
+                            <input type="date" name="end_date" class="form-control" value="<?php echo $end_date; ?>" placeholder="To Date">
                         </div>
                         
                         <div class="limit-selector">
                             <div class="form-group">
                                 <label class="form-label">Records per page</label>
-                                <select name="limit" class="form-control" onchange="this.form.submit()">
+                                <select name="limit" class="form-control">
                                     <?php foreach ($allowed_limits as $allowed_limit): ?>
                                         <option value="<?php echo $allowed_limit; ?>" <?php echo $limit == $allowed_limit ? 'selected' : ''; ?>>
                                             <?php echo $allowed_limit; ?>
@@ -1501,87 +1226,44 @@ if ($stats_result && $stats_result->num_rows > 0) {
                         </div>
 
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-filter"></i> Apply
+                            <i class="fas fa-filter"></i> Apply Filters
                         </button>
                         
-                        <a href="super_admin_deposits.php" class="btn btn-secondary">
+                        <a href="adminlog.php" class="btn btn-secondary">
                             <i class="fas fa-redo"></i> Reset Filters
                         </a>
                     </form>
                 </div>
                 
-                <?php if (!empty($deposits)): ?>
+                <?php if (!empty($admin_logs)): ?>
                     <!-- Desktop Table View -->
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>User</th>
                                     <th>Admin</th>
-                                    <th>Amount</th>
-                                    <th>Payment Method</th>
-                                    <th>UTR Number</th>
-                                    <th>Payment Proof</th>
-                                    <th>Status</th>
-                                    <th>Date</th>
-                                    <th>Actions</th>
+                                    <th>Activity</th>
+                                    <th>Description</th>
+                                    <th>Date & Time</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($deposits as $deposit): ?>
+                                <?php foreach ($admin_logs as $log): ?>
                                     <tr>
-                                        <td><?php echo $deposit['id']; ?></td>
+                                        <td><?php echo $log['id']; ?></td>
                                         <td>
-                                            <div><?php echo $deposit['username']; ?></div>
-                                            <div class="text-muted" style="font-size: 0.8rem;"><?php echo $deposit['email']; ?></div>
-                                            <div class="text-muted" style="font-size: 0.8rem;">Balance: $<?php echo number_format($deposit['user_balance'], 2); ?></div>
-                                        </td>
-                                        <td>
-                                            <span class="admin-info"><?php echo $deposit['admin_username']; ?> (ID: <?php echo $deposit['admin_id']; ?>)</span>
-                                        </td>
-                                        <td>$<?php echo number_format($deposit['amount'], 2); ?></td>
-                                        <td>
-                                            <span class="payment-method">
-                                                <?php echo ucfirst($deposit['payment_method']); ?>
+                                            <span class="admin-info">
+                                                <?php echo $log['admin_username'] ? $log['admin_username'] . ' (ID: ' . $log['admin_id'] . ')' : 'Admin ID: ' . $log['admin_id']; ?>
                                             </span>
                                         </td>
-                                        <td><?php echo $deposit['utr_number']; ?></td>
                                         <td>
-                                            <?php if ($deposit['payment_proof']): ?>
-                                                <img src="../uploads/deposit_proofs/<?php echo $deposit['payment_proof']; ?>" 
-                                                     alt="Payment Proof" 
-                                                     class="payment-proof"
-                                                     onclick="showPaymentProof('<?php echo $deposit['payment_proof']; ?>', '<?php echo $deposit['username']; ?>', '<?php echo $deposit['amount']; ?>')">
-                                            <?php else: ?>
-                                                <span class="text-muted">No proof</span>
-                                            <?php endif; ?>
+                                            <span class="log-title"><?php echo htmlspecialchars($log['title']); ?></span>
                                         </td>
                                         <td>
-                                            <span class="status status-<?php echo $deposit['status']; ?>">
-                                                <?php echo ucfirst($deposit['status']); ?>
-                                            </span>
+                                            <span class="log-description"><?php echo htmlspecialchars($log['description']); ?></span>
                                         </td>
-                                        <td><?php echo date('M j, Y g:i A', strtotime($deposit['created_at'])); ?></td>
-                                        <td>
-                                            <?php if ($deposit['status'] == 'pending'): ?>
-                                                <div class="action-buttons">
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="deposit_id" value="<?php echo $deposit['id']; ?>">
-                                                        <button type="submit" name="approve_deposit" class="btn btn-success btn-sm" 
-                                                                onclick="return confirm('Are you sure you want to approve this deposit? User balance will be updated.')">
-                                                            <i class="fas fa-check"></i> Approve
-                                                        </button>
-                                                    </form>
-                                                    <button type="button" class="btn btn-danger btn-sm reject-btn" 
-                                                            data-deposit-id="<?php echo $deposit['id']; ?>">
-                                                        <i class="fas fa-times"></i> Reject
-                                                    </button>
-                                                </div>
-                                            <?php else: ?>
-                                                <span class="text-muted">No actions</span>
-                                            <?php endif; ?>
-                                        </td>
+                                        <td><?php echo date('M j, Y g:i A', strtotime($log['created_at'])); ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -1589,93 +1271,43 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     </div>
                     
                     <!-- Mobile Card View -->
-                    <div class="deposits-cards">
-                        <?php foreach ($deposits as $deposit): ?>
-                            <div class="deposit-card">
-                                <div class="deposit-row">
-                                    <span class="deposit-label">ID:</span>
-                                    <span class="deposit-value"><?php echo $deposit['id']; ?></span>
+                    <div class="logs-cards">
+                        <?php foreach ($admin_logs as $log): ?>
+                            <div class="log-card">
+                                <div class="log-row">
+                                    <span class="log-label">ID:</span>
+                                    <span class="log-value"><?php echo $log['id']; ?></span>
                                 </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">User:</span>
-                                    <span class="deposit-value"><?php echo $deposit['username']; ?></span>
-                                </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Email:</span>
-                                    <span class="deposit-value"><?php echo $deposit['email']; ?></span>
-                                </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Admin:</span>
-                                    <span class="deposit-value">
-                                        <span class="admin-info"><?php echo $deposit['admin_username']; ?> (ID: <?php echo $deposit['admin_id']; ?>)</span>
-                                    </span>
-                                </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">User Balance:</span>
-                                    <span class="deposit-value">$<?php echo number_format($deposit['user_balance'], 2); ?></span>
-                                </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Amount:</span>
-                                    <span class="deposit-value">$<?php echo number_format($deposit['amount'], 2); ?></span>
-                                </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Payment Method:</span>
-                                    <span class="deposit-value">
-                                        <span class="payment-method">
-                                            <?php echo ucfirst($deposit['payment_method']); ?>
+                                <div class="log-row">
+                                    <span class="log-label">Admin:</span>
+                                    <span class="log-value">
+                                        <span class="admin-info">
+                                            <?php echo $log['admin_username'] ? $log['admin_username'] . ' (ID: ' . $log['admin_id'] . ')' : 'Admin ID: ' . $log['admin_id']; ?>
                                         </span>
                                     </span>
                                 </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">UTR Number:</span>
-                                    <span class="deposit-value"><?php echo $deposit['utr_number']; ?></span>
-                                </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Payment Proof:</span>
-                                    <span class="deposit-value">
-                                        <?php if ($deposit['payment_proof']): ?>
-                                            <img src="../uploads/deposit_proofs/<?php echo $deposit['payment_proof']; ?>" 
-                                                 alt="Payment Proof" 
-                                                 class="payment-proof"
-                                                 onclick="showPaymentProof('<?php echo $deposit['payment_proof']; ?>', '<?php echo $deposit['username']; ?>', '<?php echo $deposit['amount']; ?>')">
-                                        <?php else: ?>
-                                            <span class="text-muted">No proof</span>
-                                        <?php endif; ?>
+                                <div class="log-row">
+                                    <span class="log-label">Activity:</span>
+                                    <span class="log-value">
+                                        <span class="log-title"><?php echo htmlspecialchars($log['title']); ?></span>
                                     </span>
                                 </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Status:</span>
-                                    <span class="deposit-value">
-                                        <span class="status status-<?php echo $deposit['status']; ?>">
-                                            <?php echo ucfirst($deposit['status']); ?>
-                                        </span>
+                                <div class="log-row">
+                                    <span class="log-label">Description:</span>
+                                    <span class="log-value">
+                                        <span class="log-description"><?php echo htmlspecialchars($log['description']); ?></span>
                                     </span>
                                 </div>
-                                <div class="deposit-row">
-                                    <span class="deposit-label">Date:</span>
-                                    <span class="deposit-value"><?php echo date('M j, Y g:i A', strtotime($deposit['created_at'])); ?></span>
+                                <div class="log-row">
+                                    <span class="log-label">Date & Time:</span>
+                                    <span class="log-value"><?php echo date('M j, Y g:i A', strtotime($log['created_at'])); ?></span>
                                 </div>
-                                <?php if ($deposit['status'] == 'pending'): ?>
-                                    <div class="deposit-actions">
-                                        <form method="POST" style="width: 100%;">
-                                            <input type="hidden" name="deposit_id" value="<?php echo $deposit['id']; ?>">
-                                            <button type="submit" name="approve_deposit" class="btn btn-success" 
-                                                    onclick="return confirm('Are you sure you want to approve this deposit? User balance will be updated.')">
-                                                <i class="fas fa-check"></i> Approve Deposit
-                                            </button>
-                                        </form>
-                                        <button type="button" class="btn btn-danger reject-btn" 
-                                                data-deposit-id="<?php echo $deposit['id']; ?>">
-                                            <i class="fas fa-times"></i> Reject Deposit
-                                        </button>
-                                    </div>
-                                <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     </div>
                 <?php else: ?>
                     <div class="text-center p-3">
-                        <p>No deposit requests found.</p>
+                        <p>No admin logs found.</p>
                     </div>
                 <?php endif; ?>
                 
@@ -1683,10 +1315,10 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 <?php if ($total_pages > 1): ?>
                     <div class="pagination">
                         <?php if ($page > 1): ?>
-                            <a href="?page=1&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
+                            <a href="?page=1&limit=<?php echo $limit; ?>&search_admin=<?php echo urlencode($search_admin); ?>&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>">
                                 <i class="fas fa-angle-double-left"></i>
                             </a>
-                            <a href="?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
+                            <a href="?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&search_admin=<?php echo urlencode($search_admin); ?>&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>">
                                 <i class="fas fa-angle-left"></i>
                             </a>
                         <?php else: ?>
@@ -1701,17 +1333,17 @@ if ($stats_result && $stats_result->num_rows > 0) {
                         
                         for ($i = $start_page; $i <= $end_page; $i++):
                         ?>
-                            <a href="?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>" 
+                            <a href="?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&search_admin=<?php echo urlencode($search_admin); ?>&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" 
                                class="<?php echo $i == $page ? 'current' : ''; ?>">
                                 <?php echo $i; ?>
                             </a>
                         <?php endfor; ?>
                         
                         <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
+                            <a href="?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&search_admin=<?php echo urlencode($search_admin); ?>&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>">
                                 <i class="fas fa-angle-right"></i>
                             </a>
-                            <a href="?page=<?php echo $total_pages; ?>&limit=<?php echo $limit; ?>&filter_status=<?php echo $filter_status; ?>&search_admin=<?php echo urlencode($search_admin); ?>">
+                            <a href="?page=<?php echo $total_pages; ?>&limit=<?php echo $limit; ?>&search_admin=<?php echo urlencode($search_admin); ?>&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>">
                                 <i class="fas fa-angle-double-right"></i>
                             </a>
                         <?php else: ?>
@@ -1750,56 +1382,6 @@ if ($stats_result && $stats_result->num_rows > 0) {
             });
         });
 
-        // Reject modal functionality
-        const rejectModal = document.getElementById('rejectModal');
-        const rejectForm = document.getElementById('rejectForm');
-        const modalClose = document.getElementById('modalClose');
-        const cancelReject = document.getElementById('cancelReject');
-        
-        document.querySelectorAll('.reject-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const depositId = this.getAttribute('data-deposit-id');
-                document.getElementById('rejectDepositId').value = depositId;
-                rejectModal.classList.add('active');
-            });
-        });
-        
-        modalClose.addEventListener('click', function() {
-            rejectModal.classList.remove('active');
-        });
-        
-        cancelReject.addEventListener('click', function() {
-            rejectModal.classList.remove('active');
-        });
-        
-        // Close modal when clicking outside
-        rejectModal.addEventListener('click', function(e) {
-            if (e.target === rejectModal) {
-                rejectModal.classList.remove('active');
-            }
-        });
-        
-        // Payment proof modal functionality
-        const proofModal = document.getElementById('proofModal');
-        const proofModalClose = document.getElementById('proofModalClose');
-        
-        function showPaymentProof(imageSrc, username, amount) {
-            document.getElementById('proofImage').src = '../uploads/deposit_proofs/' + imageSrc;
-            document.getElementById('proofInfo').innerHTML = 
-                `<strong>${username}</strong> - $${parseFloat(amount).toFixed(2)}`;
-            proofModal.classList.add('active');
-        }
-        
-        proofModalClose.addEventListener('click', function() {
-            proofModal.classList.remove('active');
-        });
-        
-        proofModal.addEventListener('click', function(e) {
-            if (e.target === proofModal) {
-                proofModal.classList.remove('active');
-            }
-        });
-        
         // Handle window resize
         window.addEventListener('resize', function() {
             if (window.innerWidth > 768) {
@@ -1808,6 +1390,28 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 document.body.style.overflow = '';
             }
         });
+
+        // Update current time
+        function updateCurrentTime() {
+            const now = new Date();
+            const options = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            const timeElement = document.getElementById('currentTime');
+            if (timeElement) {
+                timeElement.textContent = now.toLocaleDateString('en-US', options);
+            }
+        }
+
+        // Update time initially and every minute
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 60000);
     </script>
 </body>
 </html>

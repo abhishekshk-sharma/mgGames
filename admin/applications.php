@@ -1,5 +1,5 @@
 <?php
-// super_admin_transactions.php
+// applications.php
 require_once '../config.php';
 
 // Start session at the very top
@@ -7,95 +7,99 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as super admin
-if (!isset($_SESSION['super_admin_id'])) {
-    header("location: super_admin_login.php");
+// Redirect if not logged in as admin
+if (!isset($_SESSION['admin_id'])) {
+    header("location: login.php");
     exit;
 }
 
-// Get super admin details
-$super_admin_id = $_SESSION['super_admin_id'];
-$super_admin_username = $_SESSION['super_admin_username'];
+// Get admin details
+$admin_id = $_SESSION['admin_id'];
+$admin_username = $_SESSION['admin_username'];
 
 // Pagination setup
 $limit = 20; // Number of records per page
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// Initialize variables for filtering and searching
-$filter_type = isset($_GET['filter_type']) ? $_GET['filter_type'] : '';
-$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
-$search_admin = isset($_GET['search_admin']) ? trim($_GET['search_admin']) : '';
+// Get total count of admin requests
+$sql_count = "SELECT COUNT(*) as total FROM admin_requests";
+$result_count = $conn->query($sql_count);
+$total_records = $result_count->fetch_assoc()['total'];
+$total_pages = ceil($total_records / $limit);
 
-// Base query for transactions with admin info
-$where_conditions = [];
-$params = [];
-$types = '';
-
-// Build query conditions
-if ($search_admin) {
-    // Search by admin username or ID
-    $where_conditions[] = "(a.username LIKE ? OR a.id = ?)";
-    $params[] = "%$search_admin%";
-    $params[] = $search_admin;
-    $types .= 'ss';
-}
-
-if ($filter_type) {
-    $where_conditions[] = "t.type = ?";
-    $params[] = $filter_type;
-    $types .= 's';
-}
-
-if ($filter_status) {
-    $where_conditions[] = "t.status = ?";
-    $params[] = $filter_status;
-    $types .= 's';
-}
-
-// Build WHERE clause
-$where_clause = '';
-if (!empty($where_conditions)) {
-    $where_clause = "WHERE " . implode(" AND ", $where_conditions);
-}
-
-// Get total count of transactions
-$sql_count = "SELECT COUNT(t.id) as total 
-              FROM transactions t 
-              JOIN users u ON t.user_id = u.id 
-              JOIN admins a ON u.referral_code = a.referral_code 
-              $where_clause";
-$stmt_count = $conn->prepare($sql_count);
-if ($stmt_count) {
-    if (!empty($params)) {
-        $stmt_count->bind_param($types, ...$params);
-    }
-    $stmt_count->execute();
-    $result_count = $stmt_count->get_result();
-    $total_records = $result_count->fetch_assoc()['total'];
-    $total_pages = ceil($total_records / $limit);
-}
-
-// Get transactions with pagination
-$transactions = [];
-$sql = "SELECT t.*, u.username as user_username, a.username as admin_username, a.id as admin_id
-        FROM transactions t 
-        JOIN users u ON t.user_id = u.id 
-        JOIN admins a ON u.referral_code = a.referral_code 
-        $where_clause
-        ORDER BY t.created_at DESC 
+// Get admin requests with pagination
+$requests = [];
+$sql = "SELECT ar.*, a.username as admin_username, u.username as user_username 
+        FROM admin_requests ar 
+        LEFT JOIN admins a ON ar.admin_id = a.id 
+        LEFT JOIN users u ON ar.user_id = u.id 
+        ORDER BY ar.created_at DESC 
         LIMIT $limit OFFSET $offset";
-
-$stmt = $conn->prepare($sql);
-if ($stmt) {
-    if (!empty($params)) {
-        $stmt->bind_param($types, ...$params);
+$result = $conn->query($sql);
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $requests[] = $row;
     }
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result && $result->num_rows > 0) {
+}
+
+// Filter functionality
+$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
+$filter_username = isset($_GET['filter_username']) ? $_GET['filter_username'] : '';
+
+if ($filter_status || $filter_username) {
+    $where_conditions = [];
+    $params = [];
+    $types = '';
+    
+    if ($filter_status) {
+        $where_conditions[] = "ar.status = ?";
+        $params[] = $filter_status;
+        $types .= 's';
+    }
+    
+    if ($filter_username) {
+        $where_conditions[] = "u.username LIKE ?";
+        $params[] = "%$filter_username%";
+        $types .= 's';
+    }
+    
+    $where_clause = "WHERE " . implode(" AND ", $where_conditions);
+    
+    // Update count with filters
+    $sql_count = "SELECT COUNT(*) as total FROM admin_requests ar 
+                  LEFT JOIN users u ON ar.user_id = u.id 
+                  $where_clause";
+    $stmt_count = $conn->prepare($sql_count);
+    if ($stmt_count) {
+        if ($params) {
+            $stmt_count->bind_param($types, ...$params);
+        }
+        $stmt_count->execute();
+        $result_count = $stmt_count->get_result();
+        $total_records = $result_count->fetch_assoc()['total'];
+        $total_pages = ceil($total_records / $limit);
+    }
+    
+    // Update requests query with filters
+    $sql = "SELECT ar.*, a.username as admin_username, u.username as user_username 
+            FROM admin_requests ar 
+            LEFT JOIN admins a ON ar.admin_id = a.id 
+            LEFT JOIN users u ON ar.user_id = u.id 
+            $where_clause
+            ORDER BY ar.created_at DESC 
+            LIMIT $limit OFFSET $offset";
+    
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+        if ($params) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $requests = [];
         while ($row = $result->fetch_assoc()) {
-            $transactions[] = $row;
+            $requests[] = $row;
         }
     }
 }
@@ -105,7 +109,7 @@ if ($stmt) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transactions - Super Admin</title>
+    <title>Applications - RB Games Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -402,34 +406,22 @@ if ($stmt) {
         display: inline-block;
     }
 
-    .status-completed {
-        background: rgba(0, 184, 148, 0.2);
-        color: var(--success);
-        border: 1px solid rgba(0, 184, 148, 0.3);
-    }
-
     .status-pending {
         background: rgba(253, 203, 110, 0.2);
         color: var(--warning);
         border: 1px solid rgba(253, 203, 110, 0.3);
     }
 
-    .status-failed {
-        background: rgba(214, 48, 49, 0.2);
-        color: var(--danger);
-        border: 1px solid rgba(214, 48, 49, 0.3);
+    .status-approved {
+        background: rgba(0, 184, 148, 0.2);
+        color: var(--success);
+        border: 1px solid rgba(0, 184, 148, 0.3);
     }
-    
+
     .status-rejected {
         background: rgba(214, 48, 49, 0.2);
         color: var(--danger);
         border: 1px solid rgba(214, 48, 49, 0.3);
-    }
-
-    .status-cancelled {
-        background: rgba(108, 117, 125, 0.2);
-        color: #6c757d;
-        border: 1px solid rgba(108, 117, 125, 0.3);
     }
 
     /* Filter Form */
@@ -507,6 +499,21 @@ if ($stmt) {
 
     .btn-secondary:hover {
         background: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-sm {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+
+    .btn-success {
+        background: var(--success);
+        color: white;
+    }
+
+    .btn-danger {
+        background: var(--danger);
+        color: white;
     }
 
     /* Pagination */
@@ -613,20 +620,20 @@ if ($stmt) {
     }
 
     /* Card view for mobile */
-    .transactions-cards {
+    .requests-cards {
         display: none;
         flex-direction: column;
         gap: 1rem;
     }
 
-    .transaction-card {
+    .request-card {
         background: rgba(255, 255, 255, 0.05);
         border-radius: 8px;
         padding: 1rem;
         border: 1px solid var(--border-color);
     }
 
-    .transaction-row {
+    .request-row {
         display: flex;
         justify-content: space-between;
         margin-bottom: 0.5rem;
@@ -634,18 +641,18 @@ if ($stmt) {
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    .transaction-row:last-child {
+    .request-row:last-child {
         margin-bottom: 0;
         border-bottom: none;
     }
 
-    .transaction-label {
+    .request-label {
         color: var(--text-muted);
         font-weight: 500;
         min-width: 120px;
     }
 
-    .transaction-value {
+    .request-value {
         text-align: right;
         flex: 1;
     }
@@ -786,7 +793,7 @@ if ($stmt) {
             display: none;
         }
         
-        .transactions-cards {
+        .requests-cards {
             display: flex;
         }
         
@@ -834,11 +841,11 @@ if ($stmt) {
             padding: 0 0.8rem;
         }
         
-        .transaction-card {
+        .request-card {
             padding: 0.8rem;
         }
         
-        .transaction-label {
+        .request-label {
             min-width: 100px;
             font-size: 0.9rem;
         }
@@ -881,16 +888,16 @@ if ($stmt) {
             font-size: 0.9rem;
         }
         
-        .transaction-card {
+        .request-card {
             padding: 0.7rem;
         }
         
-        .transaction-row {
+        .request-row {
             flex-direction: column;
             gap: 0.3rem;
         }
         
-        .transaction-label, .transaction-value {
+        .request-label, .request-value {
             width: 100%;
             text-align: left;
         }
@@ -943,7 +950,7 @@ if ($stmt) {
             font-size: 0.9rem;
         }
         
-        .transaction-card {
+        .request-card {
             padding: 0.6rem;
         }
         
@@ -1016,17 +1023,6 @@ if ($stmt) {
         border: 1px solid rgba(214, 48, 49, 0.3);
         color: var(--danger);
     }
-
-    .admin-info {
-            padding: 0.3rem 0.8rem;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            display: inline-block;
-            background: rgba(255, 60, 126, 0.2);
-            color: var(--primary);
-            border: 1px solid rgba(255, 60, 126, 0.3);
-        }
     </style>
 </head>
 <body>
@@ -1046,62 +1042,58 @@ if ($stmt) {
                 <h2>RB Games</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="super_admin_dashboard.php" class="menu-item ">
+                <a href="dashboard.php" class="menu-item">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="super_admin_manage_admins.php" class="menu-item ">
-                    <i class="fas fa-user-shield"></i>
-                    <span>Manage Admins</span>
-                </a>
-                <a href="super_admin_all_users.php" class="menu-item">
+                <a href="users.php" class="menu-item">
                     <i class="fas fa-users"></i>
-                    <span>All Users</span>
+                    <span>Users</span>
                 </a>
-                <a href="super_admin_transactions.php" class="menu-item active">
-                    <i class="fas fa-exchange-alt"></i>
-                    <span>All Transactions</span>
+                
+
+                <a href="todays_active_games.php" class="menu-item ">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Today's Games</span>
                 </a>
-                <a href="super_admin_withdrawals.php" class="menu-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>All Withdrawals</span>
+                <a href="game_sessions_history.php" class="menu-item ">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Game Sessions History</span>
                 </a>
-                <a href="super_admin_deposits.php" class="menu-item">
+                <a href="all_users_history.php" class="menu-item ">
+                    <i class="fas fa-history"></i>
+                    <span>All Users Bet History</span>
+                </a>
+                <a href="admin_transactions.php" class="menu-item">
                     <i class="fas fa-money-bill-wave"></i>
-                    <span>All Deposits</span>
+                    <span>Transactions</span>
                 </a>
-                <a href="admin_games.php" class="menu-item">
-                    <i class="fa-regular fa-pen-to-square"></i>
-                    <span>Edit Games</span>
+                <a href="admin_withdrawals.php" class="menu-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Withdrawals</span>
                 </a>
-                <a href="edit_result.php" class="menu-item ">
-                    <i class="fa-solid fa-puzzle-piece"></i>
-                    <span>Edit Result</span>
+                <a href="admin_deposits.php" class="menu-item ">
+                    <i class="fas fa-money-bill"></i>
+                    <span>Deposits</span>
                 </a>
-                <a href="super_admin_applications.php" class="menu-item">
+
+                <a href="applications.php" class="menu-item active">
                     <i class="fas fa-tasks"></i>
-                    <span>All Applications</span>
+                    <span>Applications</span>
                 </a>
-                <a href="super_admin_reports.php" class="menu-item">
+                
+                <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Platform Reports</span>
+                    <span>Reports</span>
                 </a>
-                <a href="profit_loss.php" class="menu-item ">
-                    <i class="fa-solid fa-sack-dollar"></i>
-                    <span>Profit & Loss</span>
-                </a>
-                <a href="super_admin_profile.php" class="menu-item">
+                <a href="admin_profile.php" class="menu-item ">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
-                </a>
-                <a href="super_admin_settings.php" class="menu-item">
-                    <i class="fas fa-cog"></i>
-                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -1110,21 +1102,15 @@ if ($stmt) {
         <div class="main-content">
             <div class="header">
                 <div class="welcome">
-                    <h1>Transactions</h1>
-                    <p>View and manage all user transactions across all admins</p>
+                    <h1>Applications</h1>
+                    <p>View and manage all admin requests</p>
                 </div>
                 <div class="header-actions">
-                    <div class="current-time">
-                        <i class="fas fa-clock"></i>
-                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
-                    </div>
-                    
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
+                        <span><?php echo $admin_username; ?></span>
                     </div>
-                    
-                    <a href="super_admin_logout.php" class="logout-btn">
+                    <a href="admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -1134,34 +1120,19 @@ if ($stmt) {
             <!-- Filter Section -->
             <div class="dashboard-section">
                 <div class="section-header">
-                    <h2 class="section-title"><i class="fas fa-filter"></i> Filter Transactions</h2>
+                    <h2 class="section-title"><i class="fas fa-filter"></i> Filter Applications</h2>
                 </div>
                 <form method="GET" class="filter-form">
                     <div class="form-group">
-                        <label class="form-label">Search Admin</label>
-                        <input type="text" name="search_admin" class="form-control" placeholder="Admin username or ID" value="<?php echo htmlspecialchars($search_admin); ?>">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Transaction Type</label>
-                        <select name="filter_type" class="form-control">
-                            <option value="">All Types</option>
-                            <option value="deposit" <?php echo $filter_type == 'deposit' ? 'selected' : ''; ?>>Deposit</option>
-                            <option value="withdrawal" <?php echo $filter_type == 'withdrawal' ? 'selected' : ''; ?>>Withdrawal</option>
-                            <option value="bet" <?php echo $filter_type == 'bet' ? 'selected' : ''; ?>>Bet</option>
-                            <option value="winning" <?php echo $filter_type == 'winning' ? 'selected' : ''; ?>>Winning</option>
-                            <option value="bonus" <?php echo $filter_type == 'bonus' ? 'selected' : ''; ?>>Bonus</option>
-                            <option value="refund" <?php echo $filter_type == 'refund' ? 'selected' : ''; ?>>Refund</option>
-                            <option value="adjustment" <?php echo $filter_type == 'adjustment' ? 'selected' : ''; ?>>Adjustment</option>
-                        </select>
+                        <label class="form-label">Username</label>
+                        <input type="text" name="filter_username" class="form-control" placeholder="Search by username..." value="<?php echo htmlspecialchars($filter_username); ?>">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Status</label>
                         <select name="filter_status" class="form-control">
                             <option value="">All Statuses</option>
                             <option value="pending" <?php echo $filter_status == 'pending' ? 'selected' : ''; ?>>Pending</option>
-                            <option value="completed" <?php echo $filter_status == 'completed' ? 'selected' : ''; ?>>Completed</option>
-                            <option value="failed" <?php echo $filter_status == 'failed' ? 'selected' : ''; ?>>Failed</option>
-                            <option value="cancelled" <?php echo $filter_status == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                            <option value="approved" <?php echo $filter_status == 'approved' ? 'selected' : ''; ?>>Approved</option>
                             <option value="rejected" <?php echo $filter_status == 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                         </select>
                     </div>
@@ -1169,53 +1140,59 @@ if ($stmt) {
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-search"></i> Apply Filters
                         </button>
-                        <a href="super_admin_transactions.php" class="btn btn-secondary">
+                        <a href="applications.php" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Clear
                         </a>
                     </div>
                 </form>
             </div>
 
-            <!-- Transactions Table -->
+            <!-- Applications Table -->
             <div class="dashboard-section">
                 <div class="section-header">
-                    <h2 class="section-title"><i class="fas fa-exchange-alt"></i> All Transactions</h2>
+                    <h2 class="section-title"><i class="fas fa-tasks"></i> All Applications</h2>
                     <div class="view-all">Total: <?php echo $total_records; ?></div>
                 </div>
                 
-                <?php if (!empty($transactions)): ?>
+                <?php if (!empty($requests)): ?>
                     <!-- Desktop Table View -->
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>User</th>
                                     <th>Admin</th>
-                                    <th>Type</th>
+                                    <th>User</th>
+                                    <th>Title</th>
+                                    <th>Description</th>
                                     <th>Amount</th>
-                                    <th>Balance Before</th>
-                                    <th>Balance After</th>
                                     <th>Status</th>
                                     <th>Date</th>
+                                    
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($transactions as $transaction): ?>
+                                <?php foreach ($requests as $request): ?>
                                     <tr>
-                                        <td><?php echo $transaction['id']; ?></td>
-                                        <td><?php echo $transaction['user_username']; ?></td>
-                                        <td><?php echo $transaction['admin_username'] . ' (ID: ' . $transaction['admin_id'] . ')'; ?></td>
-                                        <td><?php echo ucfirst($transaction['type']); ?></td>
-                                        <td>$<?php echo number_format($transaction['amount'], 2); ?></td>
-                                        <td>$<?php echo number_format($transaction['balance_before'], 2); ?></td>
-                                        <td>$<?php echo number_format($transaction['balance_after'], 2); ?></td>
+                                        <td><?php echo $request['id']; ?></td>
+                                        <td><?php echo $request['admin_username'] ?? 'N/A'; ?></td>
+                                        <td><?php echo $request['user_username'] ?? 'N/A'; ?></td>
+                                        <td><?php echo htmlspecialchars($request['title']); ?></td>
+                                        <td><?php echo htmlspecialchars($request['description']); ?></td>
                                         <td>
-                                            <span class="status status-<?php echo $transaction['status']; ?>">
-                                                <?php echo ucfirst($transaction['status']); ?>
+                                            <?php if ($request['amount'] !== null): ?>
+                                                $<?php echo number_format($request['amount'], 2); ?>
+                                            <?php else: ?>
+                                                N/A
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <span class="status status-<?php echo $request['status']; ?>">
+                                                <?php echo ucfirst($request['status']); ?>
                                             </span>
                                         </td>
-                                        <td><?php echo date('M j, Y g:i A', strtotime($transaction['created_at'])); ?></td>
+                                        <td><?php echo date('M j, Y g:i A', strtotime($request['created_at'])); ?></td>
+                                        
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -1223,55 +1200,58 @@ if ($stmt) {
                     </div>
                     
                     <!-- Mobile Card View -->
-                    <div class="transactions-cards">
-                        <?php foreach ($transactions as $transaction): ?>
-                            <div class="transaction-card">
-                                <div class="transaction-row">
-                                    <span class="transaction-label">ID:</span>
-                                    <span class="transaction-value"><?php echo $transaction['id']; ?></span>
+                    <div class="requests-cards">
+                        <?php foreach ($requests as $request): ?>
+                            <div class="request-card">
+                                <div class="request-row">
+                                    <span class="request-label">ID:</span>
+                                    <span class="request-value"><?php echo $request['id']; ?></span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">User:</span>
-                                    <span class="transaction-value"><?php echo $transaction['user_username']; ?></span>
+                                <div class="request-row">
+                                    <span class="request-label">Admin:</span>
+                                    <span class="request-value"><?php echo $request['admin_username'] ?? 'N/A'; ?></span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Admin:</span>
-                                    <span class="transaction-value"><?php echo $transaction['admin_username'] . ' (ID: ' . $transaction['admin_id'] . ')'; ?></span>
+                                <div class="request-row">
+                                    <span class="request-label">User:</span>
+                                    <span class="request-value"><?php echo $request['user_username'] ?? 'N/A'; ?></span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Type:</span>
-                                    <span class="transaction-value"><?php echo ucfirst($transaction['type']); ?></span>
+                                <div class="request-row">
+                                    <span class="request-label">Title:</span>
+                                    <span class="request-value"><?php echo htmlspecialchars($request['title']); ?></span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Amount:</span>
-                                    <span class="transaction-value">$<?php echo number_format($transaction['amount'], 2); ?></span>
+                                <div class="request-row">
+                                    <span class="request-label">Description:</span>
+                                    <span class="request-value"><?php echo htmlspecialchars($request['description']); ?></span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Balance Before:</span>
-                                    <span class="transaction-value">$<?php echo number_format($transaction['balance_before'], 2); ?></span>
+                                <div class="request-row">
+                                    <span class="request-label">Amount:</span>
+                                    <span class="request-value">
+                                        <?php if ($request['amount'] !== null): ?>
+                                            $<?php echo number_format($request['amount'], 2); ?>
+                                        <?php else: ?>
+                                            N/A
+                                        <?php endif; ?>
+                                    </span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Balance After:</span>
-                                    <span class="transaction-value">$<?php echo number_format($transaction['balance_after'], 2); ?></span>
-                                </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Status:</span>
-                                    <span class="transaction-value">
-                                        <span class="status status-<?php echo $transaction['status']; ?>">
-                                            <?php echo ucfirst($transaction['status']); ?>
+                                <div class="request-row">
+                                    <span class="request-label">Status:</span>
+                                    <span class="request-value">
+                                        <span class="status status-<?php echo $request['status']; ?>">
+                                            <?php echo ucfirst($request['status']); ?>
                                         </span>
                                     </span>
                                 </div>
-                                <div class="transaction-row">
-                                    <span class="transaction-label">Date:</span>
-                                    <span class="transaction-value"><?php echo date('M j, Y g:i A', strtotime($transaction['created_at'])); ?></span>
+                                <div class="request-row">
+                                    <span class="request-label">Date:</span>
+                                    <span class="request-value"><?php echo date('M j, Y g:i A', strtotime($request['created_at'])); ?></span>
                                 </div>
+                               
                             </div>
                         <?php endforeach; ?>
                     </div>
                 <?php else: ?>
                     <div class="text-center p-3">
-                        <p>No transactions found.</p>
+                        <p>No applications found.</p>
                     </div>
                 <?php endif; ?>
                 
@@ -1279,10 +1259,10 @@ if ($stmt) {
                 <?php if ($total_pages > 1): ?>
                     <div class="pagination">
                         <?php if ($page > 1): ?>
-                            <a href="?page=1<?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=1<?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?><?php echo $filter_title ? '&filter_title=' . $filter_title : ''; ?>">
                                 <i class="fas fa-angle-double-left"></i>
                             </a>
-                            <a href="?page=<?php echo $page - 1; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $page - 1; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?><?php echo $filter_title ? '&filter_title=' . $filter_title : ''; ?>">
                                 <i class="fas fa-angle-left"></i>
                             </a>
                         <?php else: ?>
@@ -1297,17 +1277,17 @@ if ($stmt) {
                         
                         for ($i = $start_page; $i <= $end_page; $i++):
                         ?>
-                            <a href="?page=<?php echo $i; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>" 
+                            <a href="?page=<?php echo $i; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?><?php echo $filter_title ? '&filter_title=' . $filter_title : ''; ?>" 
                                class="<?php echo $i == $page ? 'current' : ''; ?>">
                                 <?php echo $i; ?>
                             </a>
                         <?php endfor; ?>
                         
                         <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo $page + 1; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $page + 1; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?><?php echo $filter_title ? '&filter_title=' . $filter_title : ''; ?>">
                                 <i class="fas fa-angle-right"></i>
                             </a>
-                            <a href="?page=<?php echo $total_pages; ?><?php echo $search_admin ? '&search_admin=' . urlencode($search_admin) : ''; ?><?php echo $filter_type ? '&filter_type=' . $filter_type : ''; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?>">
+                            <a href="?page=<?php echo $total_pages; ?><?php echo $filter_status ? '&filter_status=' . $filter_status : ''; ?><?php echo $filter_title ? '&filter_title=' . $filter_title : ''; ?>">
                                 <i class="fas fa-angle-double-right"></i>
                             </a>
                         <?php else: ?>
@@ -1424,6 +1404,32 @@ if ($stmt) {
         
         // Update every minute
         setInterval(updateTime, 60000);
+
+        // Function to update request status
+        function updateRequestStatus(requestId, status) {
+            if (confirm(`Are you sure you want to ${status} this request?`)) {
+                // Create a form to submit the request
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'update_request_status.php';
+                
+                const requestIdInput = document.createElement('input');
+                requestIdInput.type = 'hidden';
+                requestIdInput.name = 'request_id';
+                requestIdInput.value = requestId;
+                
+                const statusInput = document.createElement('input');
+                statusInput.type = 'hidden';
+                statusInput.name = 'status';
+                statusInput.value = status;
+                
+                form.appendChild(requestIdInput);
+                form.appendChild(statusInput);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
     </script>
+
 </body>
 </html>

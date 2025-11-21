@@ -1079,6 +1079,10 @@ if ($filter_type || $filter_status) {
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -1396,5 +1400,7 @@ if ($filter_type || $filter_status) {
         // Update every minute
         setInterval(updateTime, 60000);
     </script>
+
+
 </body>
 </html>

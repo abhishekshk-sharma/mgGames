@@ -17,11 +17,18 @@ if (!isset($_SESSION['admin_id'])) {
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
 
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $stmt->execute([$admin_id]);
 $referral_code_result = $stmt->get_result();
 $referral_code_data = $referral_code_result->fetch_assoc();
 $referral_code = $referral_code_data['referral_code'];
+
+if($referral_code_data['status'] == 'suspend'){
+    header("location: dashboard.php");
+    exit;   
+}
+                            
+                   
 
 // Get admin bet limits and PNL ratio
 $limit_stmt = $conn->prepare("SELECT bet_limit, pnl_ratio FROM broker_limit WHERE admin_id = ?");
@@ -1729,6 +1736,10 @@ for ($i = -6; $i <= 0; $i++) {
                     <i class="fas fa-money-bill"></i>
                     <span>Deposits</span>
                 </a>
+                <a href="applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Applications</span>
+                </a>
                 <a href="admin_reports.php" class="menu-item active">
                     <i class="fas fa-chart-bar"></i>
                     <span>Reports</span>
@@ -2190,6 +2201,21 @@ for ($i = -6; $i <= 0; $i++) {
 
         // Simple Export to Excel function without currency symbols
 function exportToExcel() {
+
+
+
+    <?php
+        // Log report generation action
+            try {
+                $stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, title, description, created_at) VALUES (?, 'Generated Report', 'Admin generated a report', NOW())");
+                $stmt->execute([$admin_id]);
+            } catch (Exception $e) {
+                // Silently fail if logging doesn't work
+                error_log("Failed to log dashboard access: " . $e->getMessage());
+            }
+
+    ?>
+
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
     const startFormatted = new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

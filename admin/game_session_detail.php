@@ -714,6 +714,98 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
             min-height: 100vh;
         }
 
+
+        /* Sidebar Styles */
+            .sidebar {
+                width: 260px;
+                background: var(--dark);
+                box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
+                z-index: 1000;
+                display: flex;
+                flex-direction: column;
+                position: fixed;
+                height: 100vh;
+                transition: all 0.3s ease;
+                overflow-y: auto;
+                left: 0;
+                top: 0;
+            }
+
+            .sidebar::-webkit-scrollbar{
+                display:none;
+            }
+            .sidebar.active {
+                left: 0;
+            }
+
+            .sidebar-header {
+                padding: 1.8rem 1.5rem;
+                background: linear-gradient(to right, var(--primary), var(--secondary));
+                text-align: center;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .sidebar-header h2 {
+                font-size: 1.6rem;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+
+            .sidebar-menu {
+                padding: 1.5rem 0;
+                flex-grow: 1;
+            }
+
+            .menu-item {
+                padding: 1rem 1.8rem;
+                display: flex;
+                align-items: center;
+                color: var(--text-light);
+                text-decoration: none;
+                transition: all 0.3s ease;
+                margin: 0.3rem 0.8rem;
+                border-radius: 8px;
+            }
+
+            .menu-item:hover, .menu-item.active {
+                background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
+                border-left: 4px solid var(--primary);
+                transform: translateX(5px);
+            }
+
+            .menu-item i {
+                margin-right: 12px;
+                font-size: 1.3rem;
+                width: 24px;
+                text-align: center;
+            }
+
+            .sidebar-footer {
+                padding: 1.2rem;
+                border-top: 1px solid var(--border-color);
+                text-align: center;
+                background: rgba(0, 0, 0, 0.2);
+            }
+
+            /* Mobile menu toggle */
+            .menu-toggle {
+                display: none;
+                background: none;
+                border: none;
+                color: var(--text-light);
+                font-size: 1.5rem;
+                cursor: pointer;
+                padding: 0.5rem;
+                z-index: 1001;
+                position: fixed;
+                top: 1rem;
+                left: 1rem;
+                background: var(--card-bg);
+                border-radius: 6px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            }
+
+
         .main-content {
             flex: 1;
             padding: 2.2rem;
@@ -1633,50 +1725,261 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
             display: inline-block;
         }
     
-    .game-type-numbers {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 1.2rem;
-    transition: all 0.3s ease;
-}
+        .game-type-numbers {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.2rem;
+            transition: all 0.3s ease;
+        }
 
-.game-type-numbers:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 60, 126, 0.3);
-}
+        .game-type-numbers:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 60, 126, 0.3);
+        }
 
-.game-type-numbers h4 {
-    color: var(--secondary);
-    font-size: 1.1rem;
-}
+        .game-type-numbers h4 {
+            color: var(--secondary);
+            font-size: 1.1rem;
+        }
 
-.game-type-numbers .numbers-grid {
-    margin-top: 0.8rem;
-}
+        .game-type-numbers .numbers-grid {
+            margin-top: 0.8rem;
+        }
 
-.game-type-numbers .number-item {
-    padding: 0.6rem;
-    font-size: 0.9rem;
-}
+        .game-type-numbers .number-item {
+            padding: 0.6rem;
+            font-size: 0.9rem;
+        }
 
-.game-type-numbers .number-value {
-    font-size: 1rem;
-    margin-bottom: 0.2rem;
-}
+        .game-type-numbers .number-value {
+            font-size: 1rem;
+            margin-bottom: 0.2rem;
+        }
 
-.game-type-numbers .number-amount {
-    font-size: 0.75rem;
-}
+        .game-type-numbers .number-amount {
+            font-size: 0.75rem;
+        }
+
+        /* Overlay for mobile */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-width: 993px) {
+                .sidebar {
+                    width: 260px;
+                    left: 0;
+                    position: fixed;
+                }
+                
+                .sidebar-header h2 {
+                    font-size: 1.2rem;
+                }
+
+                .menu-item span {
+                    display: none;
+                }
+
+                .menu-item {
+                    justify-content: center;
+                    padding: 1rem;
+                }
+                
+                .menu-item i {
+                    margin-right: 0;
+                }
+                
+                .sidebar-footer {
+                    padding: 0.8rem;
+                }
+                
+                .main-content {
+                    margin-left: 80px;
+                    padding: 1.5rem;
+                }
+                
+                .stats-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+                
+                .header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 1.2rem;
+                }
+                
+                .header-actions {
+                    width: 100%;
+                    justify-content: space-between;
+                }
+                
+                .menu-toggle {
+                    display: block;
+                }
+            }
+
+            /* Medium screens (769px - 992px) */
+            @media (max-width: 992px) and (min-width: 769px) {
+                .sidebar {
+                    width: 80px;
+                    left: 0;
+                }
+            }
+
+            @media (max-width: 768px) {
+                .sidebar {
+                    width: 260px;
+                    left: -260px;
+                }
+                .sidebar.active {
+                    left: 0;
+                }
+                .stats-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .header-actions {
+                    flex-direction: column;
+                    gap: 1rem;
+                }
+                
+                .admin-badge, .current-time {
+                    width: 100%;
+                    justify-content: center;
+                }
+                
+                .main-content {
+                    padding: 1rem;
+                }
+                
+                .quick-actions {
+                    grid-template-columns: 1fr;
+                }
+                
+                .data-table {
+                    display: block;
+                    overflow-x: auto;
+                }
+            }
+
+            @media (max-width: 576px) {
+                .sidebar {
+                    width: 0;
+                    transform: translateX(-100%);
+                }
+                
+                .sidebar.active {
+                    width: 260px;
+                    transform: translateX(0);
+                }
+                
+                .main-content {
+                    margin-left: 0;
+                    padding: 1rem;
+                }
+                
+                .menu-toggle {
+                    display: block;
+                }
+                
+                .header {
+                    margin-top: 3rem;
+                }
+                
+                .welcome h1 {
+                    font-size: 1.5rem;
+                }
+                
+                .stat-card-value {
+                    font-size: 2rem;
+                }
+                
+                .dashboard-section {
+                    padding: 1rem;
+                }
+                
+                .data-table th, .data-table td {
+                    padding: 0.8rem;
+                }
+            }
 
 </style>
 
 </head>
 <body>
     <div class="admin-container">
+        <!-- Mobile Menu Toggle -->
+        <button class="menu-toggle" id="menuToggle">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <!-- Overlay for mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
         <!-- Sidebar -->
-        <div class="sidebar">
-            <!-- Same sidebar content -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>RB Games</h2>
+            </div>
+            <div class="sidebar-menu">
+                <a href="dashboard.php" class="menu-item ">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="users.php" class="menu-item">
+                    <i class="fas fa-users"></i>
+                    <span>Users</span>
+                </a>
+                <a href="todays_active_games.php" class="menu-item">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Today's Games</span>
+                </a>
+                <a href="game_sessions_history.php" class="menu-item">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Game Sessions History</span>
+                </a>
+                <a href="all_users_history.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>All Users Bet History</span>
+                </a>
+                <a href="admin_transactions.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Transactions</span>
+                </a>
+                <a href="admin_withdrawals.php" class="menu-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Withdrawals</span>
+                </a>
+                <a href="admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill"></i>
+                    <span>Deposits</span>
+                </a>
+                <a href="admin_reports.php" class="menu-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reports</span>
+                </a>
+                <a href="admin_profile.php" class="menu-item ">
+                    <i class="fas fa-user"></i>
+                    <span>Profile</span>
+                </a>
+            </div>
+            <div class="sidebar-footer">
+                <div class="admin-info">
+                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                </div>
+            </div>
         </div>
 
         <!-- Main Content -->
@@ -2704,6 +3007,50 @@ function isActionAllowed($bet_mode, $is_before_open, $is_after_open, $is_after_c
     <?php endif; ?>
 
     <script>
+
+        // Mobile menu functionality (same as before)
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    menuToggle.addEventListener('click', function() {
+        sidebar.classList.toggle('active');
+        sidebarOverlay.classList.toggle('active');
+    });
+
+    sidebarOverlay.addEventListener('click', function() {
+        sidebar.classList.remove('active');
+        sidebarOverlay.classList.remove('active');
+    });
+
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+        item.addEventListener('click', function() {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('active');
+                sidebarOverlay.classList.remove('active');
+            }
+        });
+    });
+
+    function handleResize() {
+        if (window.innerWidth >= 993) {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+            menuToggle.style.display = 'none';
+        } else if (window.innerWidth >= 769) {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+            menuToggle.style.display = 'none';
+        } else {
+            menuToggle.style.display = 'block';
+        }
+    }
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+
         function updateRecordsPerPage(records) {
             const url = new URL(window.location.href);
             url.searchParams.set('records', records);

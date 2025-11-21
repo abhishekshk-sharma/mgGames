@@ -2040,6 +2040,14 @@ if ($games_result && $games_result->num_rows > 0) {
                     <i class="fa-regular fa-pen-to-square"></i>
                     <span>Edit Games</span>
                 </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
+                </a>
                 <a href="super_admin_reports.php" class="menu-item active">
                     <i class="fas fa-chart-bar"></i>
                     <span>Platform Reports</span>
@@ -2072,10 +2080,16 @@ if ($games_result && $games_result->num_rows > 0) {
                     <p>Comprehensive financial reports and analytics for all admins</p>
                 </div>
                 <div class="header-actions">
+                    <div class="current-time">
+                        <i class="fas fa-clock"></i>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
+                    </div>
+                    
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span><?php echo $super_admin_username; ?></span>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
                     </div>
+                    
                     <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>

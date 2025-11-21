@@ -1123,6 +1123,7 @@ if (isset($_GET['admin_users'])) {
             --success: #00b894;
             --warning: #fdcb6e;
             --danger: #d63031;
+            --suspended: #ce4c2bff;
             --super-admin: #ffc107;
             --text-light: #f5f6fa;
             --text-muted: rgba(255, 255, 255, 0.7);
@@ -1228,16 +1229,16 @@ if (isset($_GET['admin_users'])) {
             border: 1px solid rgba(0, 184, 148, 0.3);
         }
 
-        .status-pending {
-            background: rgba(253, 203, 110, 0.2);
-            color: var(--warning);
-            border: 1px solid rgba(253, 203, 110, 0.3);
+        .status-banned {
+            background: rgba(250, 68, 68, 0.2);
+            color: var(--danger);  
+            border: 1px solid rgba(253, 83, 83, 0.3);
         }
 
         .status-suspend {
-            background: rgba(214, 48, 49, 0.2);
-            color: var(--danger);
-            border: 1px solid rgba(214, 48, 49, 0.3);
+            background: rgba(214, 114, 48, 0.2);
+            color: var(--suspended);
+            border: 1px solid rgba(214, 84, 48, 0.3);
         }
 
         .status-inactive {
@@ -1733,6 +1734,14 @@ if (isset($_GET['admin_users'])) {
                     <i class="fa-regular fa-pen-to-square"></i>
                     <span>Edit Games</span>
                 </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
+                </a>
                 <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
                     <span>Platform Reports</span>
@@ -1754,6 +1763,7 @@ if (isset($_GET['admin_users'])) {
                 <div class="admin-info">
                     <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
+                
             </div>
         </div>
 
@@ -1763,6 +1773,22 @@ if (isset($_GET['admin_users'])) {
                 <div class="welcome">
                     <h1>Manage Admins</h1>
                     <p>Super Admin Panel - Manage all platform administrators</p>
+                </div>
+                <div class="header-actions">
+                    <div class="current-time">
+                        <i class="fas fa-clock"></i>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
+                    </div>
+                    
+                    <div class="admin-badge">
+                        <i class="fas fa-user-shield"></i>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
+                    </div>
+                    
+                    <a href="super_admin_logout.php" class="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
                 </div>
             </div>
 
@@ -1842,7 +1868,7 @@ if (isset($_GET['admin_users'])) {
                                                     <input type="hidden" name="admin_id" value="<?php echo $admin['id']; ?>">
                                                     <select name="status" onchange="this.form.submit()" style="background: var(--card-bg); color: var(--text-light); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.3rem;">
                                                         <option value="active" <?php echo $admin['status'] == 'active' ? 'selected' : ''; ?>>Active</option>
-                                                        <option value="pending" <?php echo $admin['status'] == 'pending' ? 'selected' : ''; ?>>Pending</option>
+                                                        <option value="banned" <?php echo $admin['status'] == 'banned' ? 'selected' : ''; ?>>Banned</option>
                                                         <option value="suspend" <?php echo $admin['status'] == 'suspend' ? 'selected' : ''; ?>>Suspend</option>
                                                         <option value="inactive" <?php echo $admin['status'] == 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                                                     </select>
