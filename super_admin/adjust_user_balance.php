@@ -9,12 +9,12 @@ if (session_status() == PHP_SESSION_NONE) {
 // Check if user is super admin
 if (!isset($_SESSION['super_admin_id'])) {
     header('HTTP/1.1 403 Forbidden');
-    echo json_encode(['success' => false, 'message' => 'Access denied']);
+    echo "Access denied";
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+    header("Location: user_details.php?user_id=" . $_POST['user_id'] . "&error=1&message=Invalid request method");
     exit;
 }
 
@@ -24,12 +24,12 @@ $amount = floatval($_POST['amount'] ?? 0);
 $reason = sanitize_input($conn, $_POST['reason'] ?? '');
 
 if (!$user_id || !$amount || !$reason) {
-    echo json_encode(['success' => false, 'message' => 'All fields are required']);
+    header("Location: user_details.php?user_id=" . $user_id . "&error=1&message=All fields are required");
     exit;
 }
 
 if ($amount <= 0) {
-    echo json_encode(['success' => false, 'message' => 'Amount must be greater than 0']);
+    header("Location: user_details.php?user_id=" . $user_id . "&error=1&message=Amount must be greater than 0");
     exit;
 }
 
@@ -70,7 +70,7 @@ try {
     $stmt->bind_param("di", $new_balance, $user_id);
     
     if (!$stmt->execute()) {
-        throw new Exception('Failed to update user balance: ' . $stmt->error);
+        throw new Exception('Failed to update user balance');
     }
     
     // Record transaction
@@ -80,30 +80,16 @@ try {
     $trans_stmt->bind_param("isdids", $user_id, $transaction_type, $amount, $current_balance, $new_balance, $reason);
     
     if (!$trans_stmt->execute()) {
-        throw new Exception('Failed to record transaction: ' . $trans_stmt->error);
+        throw new Exception('Failed to record transaction');
     }
-    
-    // Log admin action
-    $admin_log_sql = "INSERT INTO admin_logs (admin_id, title, description, created_at) 
-                     VALUES (?, 'Balance Adjustment', ?, NOW())";
-    $log_stmt = $conn->prepare($admin_log_sql);
-    $log_description = "Adjusted balance for user {$username} (ID: {$user_id}): " . 
-                     ($adjustment_type === 'add' ? '+' : '-') . "₹{$amount}. Reason: {$reason}";
-    $log_stmt->bind_param("is", $_SESSION['super_admin_id'], $log_description);
-    $log_stmt->execute();
     
     // Commit transaction
     $conn->commit();
     
-    echo json_encode([
-        'success' => true,
-        'message' => 'Balance adjusted successfully',
-        'new_balance' => $new_balance
-    ]);
+    header("Location: user_details.php?user_id=" . $user_id . "&success=1&message=Balance adjusted successfully");
     
 } catch (Exception $e) {
     $conn->rollback();
-    error_log("Error in adjust_user_balance.php: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    header("Location: user_details.php?user_id=" . $user_id . "&error=1&message=" . urlencode($e->getMessage()));
 }
 ?>
