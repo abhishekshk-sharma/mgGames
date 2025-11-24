@@ -1335,6 +1335,10 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     <i class="fa-solid fa-sack-dollar"></i>
                     <span>Profit & Loss</span>
                 </a>
+                <a href="adminlog.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>Admin Logs</span>
+                </a>
                 <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>

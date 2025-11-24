@@ -990,6 +990,9 @@ function buildUrl($params = []) {
             min-height: 100vh;
             line-height: 1.6;
         }
+        body::-webkit-scrollbar{
+            display:none;
+        }
 
         .admin-container {
             display: flex;
@@ -1432,6 +1435,127 @@ function buildUrl($params = []) {
                 justify-content: center;
             }
         }
+
+
+        /* User Details Modal Specific Styles */
+        .modal-content .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .modal-content .tab {
+            padding: 0.8rem 1.5rem;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .modal-content .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .modal-content .tab-content {
+            display: none;
+        }
+
+        .modal-content .tab-content.active {
+            display: block;
+        }
+
+        .edit-form .editable-field {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .edit-form .editable-field:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--primary);
+        }
+
+        .user-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .info-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .info-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        .quick-adjustment {
+            border: 1px solid var(--border-color);
+        }
+
+        .adjust-form .form-control {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Loading states */
+        .loading-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        .loading-content i {
+            margin-right: 0.5rem;
+        }
+
+        /* Responsive adjustments for modal */
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 98% !important;
+                margin: 1% auto !important;
+                height: 98vh !important;
+            }
+            
+            .user-info-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .modal-content .tabs {
+                overflow-x: auto;
+            }
+            
+            .adjust-form > div {
+                grid-template-columns: 1fr !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1493,6 +1617,10 @@ function buildUrl($params = []) {
                 <a href="profit_loss.php" class="menu-item ">
                     <i class="fa-solid fa-sack-dollar"></i>
                     <span>Profit & Loss</span>
+                </a>
+                <a href="adminlog.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>Admin Logs</span>
                 </a>
                 <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
@@ -1716,9 +1844,12 @@ function buildUrl($params = []) {
                                                     <i class="fas fa-coins"></i> Adjust
                                                 </button>
 
-                                                <a href="user_details.php?user_id=<?php echo $user['id']; ?>" class="btn btn-info btn-sm" target="_blank">
-                                                    <i class="fas fa-eye"></i> View
-                                                </a>
+                                               <button class="btn btn-info btn-sm" data-user-id="<?php echo $user['id']; ?>" onclick="window.openUserDetailsModal(<?php echo $user['id']; ?>)">
+    <i class="fas fa-eye"></i> View
+</button>
+                                                <button onclick="console.log('openUserDetailsModal exists:', typeof openUserDetailsModal); debugModal();" class="btn btn-warning btn-sm">
+                                                    Test Functions
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1781,163 +1912,10 @@ function buildUrl($params = []) {
         </div>
     </div>
 
-    <!-- Adjust Balance Modal -->
-    <div class="modal" id="adjustBalanceModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-coins"></i> Adjust User Balance</h3>
-                <button class="close-modal" onclick="closeModal('adjustBalanceModal')">&times;</button>
-            </div>
-            <form id="adjustBalanceForm" method="POST">
-                <input type="hidden" name="user_id" id="adjust_user_id">
-                <input type="hidden" name="adjust_balance" value="1">
-                
-                <div class="form-group">
-                    <label class="form-label">User</label>
-                    <input type="text" class="form-control" id="adjust_user_name" readonly>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Current Balance</label>
-                    <input type="text" class="form-control" id="current_balance" readonly>
-                </div>
-                
-                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="form-group">
-                        <label class="form-label">Action</label>
-                        <select name="adjustment_type" class="form-control" required>
-                            <option value="add" style='background-color: var(--dark);'>Add Balance</option>
-                            <option value="subtract" style='background-color: var(--dark);'>Subtract Balance</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Amount (₹)</label>
-                        <input type="number" name="amount" class="form-control" min="0" step="0.01" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Reason</label>
-                    <textarea name="reason" class="form-control" rows="3" placeholder="Enter reason for balance adjustment" required></textarea>
-                </div>
-                
-                <div class="modal-actions" style="margin-top: 1.5rem; text-align: right;">
-                    <button type="button" class="btn btn-outline" onclick="closeModal('adjustBalanceModal')">Cancel</button>
-                    <button type="submit" class="btn btn-success">Adjust Balance</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <?php include 'user_details_modal.php'; ?>
 
-    <script>
-        // Save filters to localStorage
-        function saveFiltersToLocalStorage() {
-            const formData = new FormData(document.getElementById('filterForm'));
-            const filters = {
-                admin_username: formData.get('admin_username') || '',
-                admin_id: formData.get('admin_id') || '',
-                search: formData.get('search') || '',
-                status: formData.get('status') || ''
-            };
-            localStorage.setItem('super_admin_user_filters', JSON.stringify(filters));
-        }
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-        // Load filters from localStorage
-        function loadFiltersFromLocalStorage() {
-            const savedFilters = localStorage.getItem('super_admin_user_filters');
-            if (savedFilters) {
-                const filters = JSON.parse(savedFilters);
-                document.querySelector('input[name="admin_username"]').value = filters.admin_username || '';
-                document.querySelector('input[name="admin_id"]').value = filters.admin_id || '';
-                document.querySelector('input[name="search"]').value = filters.search || '';
-                document.querySelector('select[name="status"]').value = filters.status || '';
-            }
-        }
 
-        // Clear all filters
-        function clearFilters() {
-            localStorage.removeItem('super_admin_user_filters');
-            window.location.href = '<?php echo buildUrl(['admin_id' => '', 'admin_username' => '', 'search' => '', 'status' => '', 'page' => 1]); ?>';
-        }
-
-        // Update records per page
-        function updateRecordsPerPage(records) {
-            const url = new URL(window.location.href);
-            url.searchParams.set('records', records);
-            url.searchParams.set('page', 1);
-            window.location.href = url.toString();
-        }
-
-        // Modal functions
-        function openAdjustBalanceModal(userId, userName, currentBalance) {
-            document.getElementById('adjust_user_id').value = userId;
-            document.getElementById('adjust_user_name').value = userName;
-            document.getElementById('current_balance').value = '₹' + currentBalance.toLocaleString('en-IN', {minimumFractionDigits: 2});
-            document.getElementById('adjustBalanceModal').style.display = 'block';
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modals = document.getElementsByClassName('modal');
-            for (let modal of modals) {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            }
-        }
-
-        // Save filters when form changes
-        document.getElementById('filterForm').addEventListener('input', saveFiltersToLocalStorage);
-
-        // Load saved filters on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadFiltersFromLocalStorage();
-            
-            // Save current page state
-            const currentState = {
-                page: <?php echo $page; ?>,
-                records: <?php echo $records_per_page; ?>
-            };
-            localStorage.setItem('super_admin_user_pagination', JSON.stringify(currentState));
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Ctrl + F to focus on search
-            if (e.ctrlKey && e.key === 'f') {
-                e.preventDefault();
-                document.querySelector('input[name="search"]').focus();
-            }
-            
-            // Escape to close modals
-            if (e.key === 'Escape') {
-                const modals = document.getElementsByClassName('modal');
-                for (let modal of modals) {
-                    if (modal.style.display === 'block') {
-                        modal.style.display = 'none';
-                    }
-                }
-            }
-        });
-
-        // Auto-submit status changes with confirmation
-        document.querySelectorAll('select[name="status"]').forEach(select => {
-            select.addEventListener('change', function() {
-                const userName = this.closest('tr').querySelector('strong').textContent;
-                const newStatus = this.value;
-                
-                if (confirm(`Are you sure you want to change ${userName}'s status to ${newStatus}?`)) {
-                    this.form.submit();
-                } else {
-                    this.form.reset();
-                }
-            });
-        });
-    </script>
 </body>
 </html>

@@ -17,6 +17,51 @@ if (!isset($_SESSION['super_admin_id'])) {
 $super_admin_id = $_SESSION['super_admin_id'];
 $super_admin_username = $_SESSION['super_admin_username'];
 
+// Pagination settings
+$per_page = 10;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($page - 1) * $per_page;
+
+// Search parameters
+$search_username = isset($_GET['search_username']) ? sanitize_input($conn, $_GET['search_username']) : '';
+$search_status = isset($_GET['search_status']) ? sanitize_input($conn, $_GET['search_status']) : '';
+$search_date_from = isset($_GET['search_date_from']) ? sanitize_input($conn, $_GET['search_date_from']) : '';
+$search_date_to = isset($_GET['search_date_to']) ? sanitize_input($conn, $_GET['search_date_to']) : '';
+
+// Build WHERE clause for search
+$where_clauses = [];
+$params = [];
+$param_types = '';
+
+if (!empty($search_username)) {
+    $where_clauses[] = "a.username LIKE ?";
+    $params[] = "%$search_username%";
+    $param_types .= 's';
+}
+
+if (!empty($search_status)) {
+    $where_clauses[] = "a.status = ?";
+    $params[] = $search_status;
+    $param_types .= 's';
+}
+
+if (!empty($search_date_from)) {
+    $where_clauses[] = "DATE(a.created_at) >= ?";
+    $params[] = $search_date_from;
+    $param_types .= 's';
+}
+
+if (!empty($search_date_to)) {
+    $where_clauses[] = "DATE(a.created_at) <= ?";
+    $params[] = $search_date_to;
+    $param_types .= 's';
+}
+
+$where_sql = '';
+if (!empty($where_clauses)) {
+    $where_sql = "WHERE " . implode(" AND ", $where_clauses);
+}
+
 // Handle status updates
 if (isset($_POST['update_status'])) {
     $admin_id = intval($_POST['admin_id']);
@@ -146,7 +191,19 @@ if (isset($_POST['update_admin'])) {
     $stmt->close();
 }
 
-// Get all admins with their broker limits
+// Get total count for pagination
+$count_sql = "SELECT COUNT(*) as total FROM admins a $where_sql";
+$count_stmt = $conn->prepare($count_sql);
+if (!empty($params)) {
+    $count_stmt->bind_param($param_types, ...$params);
+}
+$count_stmt->execute();
+$count_result = $count_stmt->get_result();
+$total_admins = $count_result->fetch_assoc()['total'];
+$total_pages = ceil($total_admins / $per_page);
+$count_stmt->close();
+
+// Get all admins with their broker limits (with pagination)
 $admins_sql = "SELECT a.*, 
                bl.deposit_limit, bl.withdrawal_limit, bl.bet_limit, bl.pnl_ratio, bl.auto_forward_enabled,
                (SELECT COUNT(*) FROM users u WHERE u.referral_code = a.referral_code) as user_count,
@@ -154,14 +211,27 @@ $admins_sql = "SELECT a.*,
                (SELECT SUM(t.amount) FROM transactions t JOIN users u ON t.user_id = u.id WHERE u.referral_code = a.referral_code AND t.type = 'deposit' AND t.status = 'completed') as total_deposits
                FROM admins a
                LEFT JOIN broker_limit bl ON a.id = bl.admin_id
-               ORDER BY a.created_at DESC";
-$admins_result = $conn->query($admins_sql);
+               $where_sql
+               ORDER BY a.created_at DESC
+               LIMIT ?, ?";
+               
+$params[] = $offset;
+$params[] = $per_page;
+$param_types .= 'ii';
+
+$admins_stmt = $conn->prepare($admins_sql);
+if (!empty($params)) {
+    $admins_stmt->bind_param($param_types, ...$params);
+}
+$admins_stmt->execute();
+$admins_result = $admins_stmt->get_result();
 $admins = [];
 if ($admins_result && $admins_result->num_rows > 0) {
     while ($row = $admins_result->fetch_assoc()) {
         $admins[] = $row;
     }
 }
+$admins_stmt->close();
 
 // Get admin details for view modal
 if (isset($_GET['view_admin'])) {
@@ -1145,6 +1215,10 @@ if (isset($_GET['admin_users'])) {
             line-height: 1.6;
         }
 
+        body::-webkit-scrollbar{
+            display:none;
+        }
+
         .admin-container {
             display: flex;
             min-height: 100vh;
@@ -1319,10 +1393,15 @@ if (isset($_GET['admin_users'])) {
             padding: 2rem;
             border-radius: 12px;
             width: 90%;
-            max-width: 600px;
+            
+            max-width: 100vw;
             border: 1px solid var(--border-color);
-            max-height: 80vh;
+            max-height: 100vh;
             overflow-y: auto;
+        }
+
+        .modal-content::-webkit-scrollbar{
+            display:none;
         }
 
         .modal-header {
@@ -1688,6 +1767,148 @@ if (isset($_GET['admin_users'])) {
             color: var(--primary);
             border: 1px solid rgba(255, 60, 126, 0.3);
         }
+
+        /* Search Form Styles */
+        .search-form {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2.2rem;
+            border: 1px solid var(--border-color);
+        }
+        
+        .search-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-light);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 0.7rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        .search-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+        
+        /* Pagination Styles */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 2rem;
+            gap: 0.5rem;
+        }
+        
+        .pagination a, .pagination span {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--text-light);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+        }
+        
+        .pagination a:hover {
+            background: var(--primary);
+        }
+        
+        .pagination .current {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .pagination .disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        /* Full Screen Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 260px; /* Account for sidebar width */
+            top: 0;
+            width: calc(100% - 260px); /* Full width minus sidebar */
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        
+        .modal-content {
+            background: var(--card-bg);
+            margin: 1% auto 2% auto;
+            padding: 2rem;
+            border-radius: 0;
+            width: 100%;
+            height: 96%;
+            border: none;
+            overflow-y: auto;
+        }
+        
+        .modal-content::-webkit-scrollbar{
+            display:none;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--card-bg);
+            z-index: 10;
+        }
+        
+        .close-modal {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+        
+        /* Responsive adjustments for modals */
+        @media (max-width: 768px) {
+            .modal {
+                left: 0;
+                width: 100%;
+            }
+            
+            .modal-content {
+                padding: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1750,6 +1971,10 @@ if (isset($_GET['admin_users'])) {
                     <i class="fa-solid fa-sack-dollar"></i>
                     <span>Profit & Loss</span>
                 </a>
+                <a href="adminlog.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>Admin Logs</span>
+                </a>
                 <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
@@ -1804,11 +2029,56 @@ if (isset($_GET['admin_users'])) {
                 </div>
             <?php endif; ?>
 
+            <!-- Search Form -->
+            <div class="search-form">
+                <form method="GET" action="">
+                    <div class="search-row">
+                        <div class="form-group">
+                            <label class="form-label" for="search_username">Username</label>
+                            <input type="text" class="form-control" id="search_username" name="search_username" 
+                                   value="<?php echo htmlspecialchars($search_username); ?>" placeholder="Search by username">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="search_status">Status</label>
+                            <select class="form-control" id="search_status" name="search_status">
+                                <option value="">All Statuses</option>
+                                <option value="active" <?php echo $search_status == 'active' ? 'selected' : ''; ?>>Active</option>
+                                <option value="banned" <?php echo $search_status == 'banned' ? 'selected' : ''; ?>>Banned</option>
+                                <option value="suspend" <?php echo $search_status == 'suspend' ? 'selected' : ''; ?>>Suspended</option>
+                                <option value="inactive" <?php echo $search_status == 'inactive' ? 'selected' : ''; ?>>Inactive</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="search_date_from">From Date</label>
+                            <input type="date" class="form-control" id="search_date_from" name="search_date_from" 
+                                   value="<?php echo htmlspecialchars($search_date_from); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="search_date_to">To Date</label>
+                            <input type="date" class="form-control" id="search_date_to" name="search_date_to" 
+                                   value="<?php echo htmlspecialchars($search_date_to); ?>">
+                        </div>
+                    </div>
+                    
+                    <div class="search-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <a href="super_admin_manage_admins.php" class="btn btn-outline">
+                            <i class="fas fa-times"></i> Clear
+                        </a>
+                    </div>
+                </form>
+            </div>
+
             <!-- Admins List -->
             <div class="dashboard-section">
                 <div class="section-header">
                     <h2 class="section-title"><i class="fas fa-user-shield"></i> All Administrators</h2>
-                    <span class="badge">Total: <?php echo count($admins); ?> admins</span>
+                    <span class="badge">Total: <?php echo $total_admins; ?> admins (Page <?php echo $page; ?> of <?php echo $total_pages; ?>)</span>
                 </div>
 
                 <div class="table-container">
@@ -1834,6 +2104,9 @@ if (isset($_GET['admin_users'])) {
                                             </div>
                                             <div style="font-size: 0.8rem; color: var(--text-muted);">
                                                 Ref: <?php echo htmlspecialchars($admin['referral_code']); ?>
+                                            </div>
+                                            <div style="font-size: 0.7rem; color: var(--text-muted);">
+                                                Joined: <?php echo date('M j, Y g:i A', strtotime($admin['created_at'])); ?>
                                             </div>
                                         </td>
                                         <td>
@@ -1883,7 +2156,9 @@ if (isset($_GET['admin_users'])) {
                                                     <i class="fas fa-edit"></i> Edit
                                                 </button>
 
-                                                <a href="?admin_users=<?php echo $admin['id']; ?>" class="btn btn-primary btn-sm">
+                                                <a href="?<?php 
+                                                    echo http_build_query(array_merge($_GET, ['admin_users' => $admin['id']]));
+                                                ?>" class="btn btn-primary btn-sm">
                                                     <i class="fas fa-users"></i> Users
                                                 </a>
 
@@ -1906,12 +2181,47 @@ if (isset($_GET['admin_users'])) {
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination -->
+                <?php if ($total_pages > 1): ?>
+                <div class="pagination">
+                    <?php if ($page > 1): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>">First</a>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>">Prev</a>
+                    <?php else: ?>
+                        <span class="disabled">First</span>
+                        <span class="disabled">Prev</span>
+                    <?php endif; ?>
+
+                    <?php
+                    // Show page numbers
+                    $start_page = max(1, $page - 2);
+                    $end_page = min($total_pages, $page + 2);
+                    
+                    for ($i = $start_page; $i <= $end_page; $i++):
+                    ?>
+                        <?php if ($i == $page): ?>
+                            <span class="current"><?php echo $i; ?></span>
+                        <?php else: ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"><?php echo $i; ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ($page < $total_pages): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>">Next</a>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>">Last</a>
+                    <?php else: ?>
+                        <span class="disabled">Next</span>
+                        <span class="disabled">Last</span>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
             </div>
 
             <!-- View Users Modal -->
             <?php if (isset($_GET['admin_users']) && isset($admin_users)): ?>
                 <div class="modal" id="usersModal" style="display: block;">
-                    <div class="modal-content" style="max-width: 800px;">
+                    <div class="modal-content">
                         <div class="modal-header">
                             <h3>
                                 <i class="fas fa-users"></i> 
@@ -2041,6 +2351,7 @@ if (isset($_GET['admin_users'])) {
             <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</button>
         </div>
     </div>
+
 
     <script>
         function openViewModal(adminId) {
@@ -2330,6 +2641,69 @@ if (isset($_GET['admin_users'])) {
                     openImageViewer(this.src, this.alt);
                 });
             });
+        }
+
+        // Update modal functions to handle full-screen modals
+        function openViewModal(adminId) {
+            fetch(`get_admin_details.php?admin_id=${adminId}`)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('viewModalContent').innerHTML = data;
+                    document.getElementById('viewModal').style.display = 'block';
+                    initializeImageViewers();
+                });
+        }
+
+        function openEditModal(adminId) {
+            document.getElementById('edit_admin_id').value = adminId;
+            fetch(`get_admin_edit.php?admin_id=${adminId}`)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('editModalContent').innerHTML = data;
+                    document.getElementById('editModal').style.display = 'block';
+                });
+        }
+
+        function openLimitsModal(adminId) {
+            document.getElementById('limits_admin_id').value = adminId;
+            fetch(`get_broker_limits.php?admin_id=${adminId}`)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('limitsModalContent').innerHTML = data;
+                    document.getElementById('limitsModal').style.display = 'block';
+                });
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+            // Remove URL parameters but keep search filters
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.delete('view_admin');
+            urlParams.delete('admin_users');
+            const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+            window.history.replaceState({}, document.title, newUrl);
+        }
+
+        // Auto-show limits modal if needed
+        <?php if (isset($_SESSION['setup_limits_for'])): ?>
+            document.addEventListener('DOMContentLoaded', function() {
+                openLimitsModal(<?php echo $_SESSION['setup_limits_for']; ?>);
+            });
+        <?php unset($_SESSION['setup_limits_for']); endif; ?>
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modals = document.getElementsByClassName('modal');
+            for (let modal of modals) {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                    const urlParams = new URLSearchParams(window.location.search);
+                    urlParams.delete('view_admin');
+                    urlParams.delete('admin_users');
+                    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+                    window.history.replaceState({}, document.title, newUrl);
+                }
+            }
         }
     </script>
 </body>

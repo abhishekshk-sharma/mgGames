@@ -900,6 +900,10 @@ $title = "Super Admin Profile - RB Games";
                     <i class="fa-solid fa-sack-dollar"></i>
                     <span>Profit & Loss</span>
                 </a>
+                <a href="adminlog.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>Admin Logs</span>
+                </a>
                 <a href="super_admin_profile.php" class="menu-item active">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>

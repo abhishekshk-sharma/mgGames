@@ -17,7 +17,13 @@ if($conn->connect_error) {
 $conn->set_charset("utf8");
 
 // Function to safely escape strings
+
+
 function sanitize_input($conn, $data) {
-    return mysqli_real_escape_string($conn, trim($data));
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    $data = $conn->real_escape_string($data);
+    return $data;
 }
 ?>
