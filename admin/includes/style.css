@@ -108,6 +108,10 @@ body {
     z-index: 2;
 }
 
+.current-time span {
+    color: var(--header-bg);
+}
+
 /* Admin Container */
 .admin-container {
     display: flex;
@@ -308,7 +312,7 @@ body {
 
 .admin-name {
     font-weight: 700;
-    color: #f1c40f;
+    color: var(--header-bg);
 }
 
 .header-actions {
@@ -2786,7 +2790,7 @@ body {
 
 .current-time {
     font-size: 0.9rem;
-    color: var(--text-light);
+    color: var(--header-bg);
     display: flex;
     align-items: center;
     justify-content: center;

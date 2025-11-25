@@ -112,80 +112,11 @@ if ($upcoming_result && $upcoming_result->num_rows > 0) {
     }
 }
 
+$pagefilename = "todays_active_games";
+
 include "includes/header.php";
 ?>
 
-<body>
-    <div class="admin-container">
-
-        <!-- Mobile Menu Toggle -->
-        <button class="menu-toggle" id="menuToggle">
-            <i class="fas fa-bars"></i>
-        </button>
-
-        <!-- Overlay for mobile -->
-        <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-
-        <!-- Sidebar -->
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>RB Games</h2>
-            </div>
-            <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="users.php" class="menu-item">
-                    <i class="fas fa-users"></i>
-                    <span>Users</span>
-                </a>
-                
-                
-                <a href="todays_active_games.php" class="menu-item active">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
-                </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item ">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
-                </a>
-                <a href="admin_deposits.php" class="menu-item ">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
-                </a>
-                <a href="applications.php" class="menu-item">
-                    <i class="fas fa-tasks"></i>
-                    <span>Applications</span>
-                </a>
-                <a href="admin_reports.php" class="menu-item">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
-                </a>
-                <a href="admin_profile.php" class="menu-item ">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
-            </div>
-            <div class="sidebar-footer">
-                <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
-                </div>
-            </div>
-        </div>
 
         <!-- Main Content -->
         <div class="main-content">
@@ -193,6 +124,16 @@ include "includes/header.php";
                 <div class="welcome">
                     <h1>Today's Active Games</h1>
                     <p>Real-time overview of today's gaming activity</p>
+                </div>
+                <div class="header-actions">
+                    <div class="admin-badge">
+                        <i class="fas fa-user-shield"></i>
+                        <span><?php echo $admin_username; ?></span>
+                    </div>
+                    <a href="admin_logout.php" class="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
                 </div>
             </div>
 
