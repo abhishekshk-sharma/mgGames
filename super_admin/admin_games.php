@@ -1,3 +1,4 @@
+
 <?php
 // admin_games.php
 require_once '../config.php';
@@ -7,15 +8,15 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Redirect if not logged in as admin
-if (!isset($_SESSION['admin_id'])) {
-    header("location: login.php");
+// Redirect if not logged in as super admin
+if (!isset($_SESSION['super_admin_id'])) {
+    header("location: super_admin_login.php");
     exit;
 }
 
 // Get admin details
-$admin_id = $_SESSION['admin_id'];
-$admin_username = $_SESSION['admin_username'];
+$super_admin_id = $_SESSION['super_admin_id'];
+$super_admin_username = $_SESSION['super_admin_username'];
 
 // Handle form submissions
 $message = '';
@@ -34,23 +35,77 @@ if (isset($_POST['add_game'])) {
     $max_bet = $_POST['max_bet'];
     $status = $_POST['status'];
     
-    // Check if game code already exists
-    $check_sql = "SELECT id FROM games WHERE code = '$code'";
-    $check_result = $conn->query($check_sql);
-    
-    if ($check_result->num_rows > 0) {
-        $message = "Game code already exists!";
-        $message_type = "error";
-    } else {
-        $sql = "INSERT INTO games (name, code, description, open_time, close_time, result_time, game_mode, min_bet, max_bet, status) 
-                VALUES ('$name', '$code', '$description', '$open_time', '$close_time', '$result_time', '$game_mode', '$min_bet', '$max_bet', '$status')";
+    // Handle image upload
+    $dynamic_images = '';
+    if (isset($_FILES['dynamic_images']) && $_FILES['dynamic_images']['error'] == 0) {
+        $uploadDir = '../uploads/imgs/';
         
-        if ($conn->query($sql) === TRUE) {
-            $message = "Game added successfully!";
-            $message_type = "success";
+        // Create directory if it doesn't exist
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+        
+        $fileName = time() . '_' . basename($_FILES['dynamic_images']['name']);
+        $targetFilePath = $uploadDir . $fileName;
+        
+        // Check if image file is an actual image
+        $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
+        $check = getimagesize($_FILES['dynamic_images']['tmp_name']);
+        
+        if ($check !== false) {
+            // Allow certain file formats
+            $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            if (in_array($imageFileType, $allowedTypes)) {
+                // Check file size (5MB maximum)
+                if ($_FILES['dynamic_images']['size'] <= 5000000) {
+                    if (move_uploaded_file($_FILES['dynamic_images']['tmp_name'], $targetFilePath)) {
+                        $dynamic_images = 'uploads/imgs/' . $fileName;
+                    } else {
+                        $message = "Sorry, there was an error uploading your file.";
+                        $message_type = "error";
+                    }
+                } else {
+                    $message = "Sorry, your file is too large. Maximum size is 5MB.";
+                    $message_type = "error";
+                }
+            } else {
+                $message = "Sorry, only JPG, JPEG, PNG, GIF & WEBP files are allowed.";
+                $message_type = "error";
+            }
         } else {
-            $message = "Error adding game: " . $conn->error;
+            $message = "File is not an image.";
             $message_type = "error";
+        }
+    }
+    
+    // If there was an error with image upload, stop further processing
+    if ($message_type === 'error') {
+        // Show error message and continue
+    } else {
+        // Check if game code already exists
+        $check_sql = "SELECT id FROM games WHERE code = '$code'";
+        $check_result = $conn->query($check_sql);
+        
+        if ($check_result->num_rows > 0) {
+            $message = "Game code already exists!";
+            $message_type = "error";
+        } else {
+            // Prepare SQL with or without image
+            if (!empty($dynamic_images)) {
+                $sql = "INSERT INTO games (name, code, description, open_time, close_time, result_time, game_mode, min_bet, max_bet, status, dynamic_images) 
+                        VALUES ('$name', '$code', '$description', '$open_time', '$close_time', '$result_time', '$game_mode', '$min_bet', '$max_bet', '$status', '$dynamic_images')";
+            } else {
+                $sql = "INSERT INTO games (name, code, description, open_time, close_time, result_time, game_mode, min_bet, max_bet, status) 
+                        VALUES ('$name', '$code', '$description', '$open_time', '$close_time', '$result_time', '$game_mode', '$min_bet', '$max_bet', '$status')";
+            }
+            
+            if ($conn->query($sql) === TRUE) {
+                $message = "Game added successfully!";
+                $message_type = "success";
+            } else {
+                $message = "Error adding game: " . $conn->error;
+                $message_type = "error";
+            }
         }
     }
 }
@@ -68,24 +123,98 @@ if (isset($_POST['update_game'])) {
     $max_bet = $_POST['max_bet'];
     $status = $_POST['status'];
     
-    $sql = "UPDATE games SET 
-            name = '$name', 
-            description = '$description', 
-            open_time = '$open_time', 
-            close_time = '$close_time', 
-            result_time = '$result_time', 
-            game_mode = '$game_mode', 
-            min_bet = '$min_bet', 
-            max_bet = '$max_bet', 
-            status = '$status' 
-            WHERE id = $game_id";
+    // Handle image upload
+    $dynamic_images = '';
+    if (isset($_FILES['dynamic_images']) && $_FILES['dynamic_images']['error'] == 0) {
+        $uploadDir = '../uploads/imgs/';
+        
+        // Create directory if it doesn't exist
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+        
+        $fileName = time() . '_' . basename($_FILES['dynamic_images']['name']);
+        $targetFilePath = $uploadDir . $fileName;
+        
+        // Check if image file is an actual image
+        $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
+        $check = getimagesize($_FILES['dynamic_images']['tmp_name']);
+        
+        if ($check !== false) {
+            // Allow certain file formats
+            $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            if (in_array($imageFileType, $allowedTypes)) {
+                // Check file size (5MB maximum)
+                if ($_FILES['dynamic_images']['size'] <= 5000000) {
+                    if (move_uploaded_file($_FILES['dynamic_images']['tmp_name'], $targetFilePath)) {
+                        $dynamic_images = 'uploads/imgs/' . $fileName;
+                        
+                        // Delete old image if exists
+                        $old_image_sql = "SELECT dynamic_images FROM games WHERE id = $game_id";
+                        $old_image_result = $conn->query($old_image_sql);
+                        if ($old_image_result && $old_image_result->num_rows > 0) {
+                            $old_game = $old_image_result->fetch_assoc();
+                            if (!empty($old_game['dynamic_images']) && file_exists('../' . $old_game['dynamic_images'])) {
+                                unlink('../' . $old_game['dynamic_images']);
+                            }
+                        }
+                    } else {
+                        $message = "Sorry, there was an error uploading your file.";
+                        $message_type = "error";
+                    }
+                } else {
+                    $message = "Sorry, your file is too large. Maximum size is 5MB.";
+                    $message_type = "error";
+                }
+            } else {
+                $message = "Sorry, only JPG, JPEG, PNG, GIF & WEBP files are allowed.";
+                $message_type = "error";
+            }
+        } else {
+            $message = "File is not an image.";
+            $message_type = "error";
+        }
+    }
     
-    if ($conn->query($sql) === TRUE) {
-        $message = "Game updated successfully!";
-        $message_type = "success";
+    // If there was an error with image upload, stop further processing
+    if ($message_type === 'error') {
+        // Show error message and continue
     } else {
-        $message = "Error updating game: " . $conn->error;
-        $message_type = "error";
+        // Prepare SQL with or without image update
+        if (!empty($dynamic_images)) {
+            $sql = "UPDATE games SET 
+                    name = '$name', 
+                    description = '$description', 
+                    open_time = '$open_time', 
+                    close_time = '$close_time', 
+                    result_time = '$result_time', 
+                    game_mode = '$game_mode', 
+                    min_bet = '$min_bet', 
+                    max_bet = '$max_bet', 
+                    status = '$status',
+                    dynamic_images = '$dynamic_images' 
+                    WHERE id = $game_id";
+        } else {
+            $sql = "UPDATE games SET 
+                    name = '$name', 
+                    description = '$description', 
+                    open_time = '$open_time', 
+                    close_time = '$close_time', 
+                    result_time = '$result_time', 
+                    game_mode = '$game_mode', 
+                    min_bet = '$min_bet', 
+                    max_bet = '$max_bet', 
+                    status = '$status' 
+                    WHERE id = $game_id";
+        }
+        
+        if ($conn->query($sql) === TRUE) {
+            $message = "Game updated successfully!";
+            $message_type = "success";
+        } else {
+            $message = "Error updating game: " . $conn->error;
+            $message_type = "error";
+        }
     }
 }
 
@@ -101,6 +230,17 @@ if (isset($_GET['delete'])) {
         $message = "Cannot delete game with active sessions!";
         $message_type = "error";
     } else {
+        // Get game image path before deleting
+        $image_sql = "SELECT dynamic_images FROM games WHERE id = $game_id";
+        $image_result = $conn->query($image_sql);
+        if ($image_result && $image_result->num_rows > 0) {
+            $game = $image_result->fetch_assoc();
+            // Delete image file if exists
+            if (!empty($game['dynamic_images']) && file_exists('../' . $game['dynamic_images'])) {
+                unlink('../' . $game['dynamic_images']);
+            }
+        }
+        
         $sql = "DELETE FROM games WHERE id = $game_id";
         if ($conn->query($sql) === TRUE) {
             $message = "Game deleted successfully!";
@@ -151,858 +291,7 @@ if (isset($_GET['edit'])) {
     <title>Games Management - RB Games Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-    :root {
-        --primary: #ff3c7e;
-        --secondary: #0fb4c9;
-        --accent: #00cec9;
-        --dark: #1a1a2e;
-        --darker: #16213e;
-        --success: #00b894;
-        --warning: #fdcb6e;
-        --danger: #d63031;
-        --text-light: #f5f6fa;
-        --text-muted: rgba(255, 255, 255, 0.7);
-        --card-bg: rgba(26, 26, 46, 0.8);
-        --border-color: rgba(255, 60, 126, 0.15);
-    }
 
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-        font-family: 'Poppins', sans-serif;
-    }
-
-    body {
-        background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
-        color: var(--text-light);
-        min-height: 100vh;
-        line-height: 1.6;
-        overflow-x: hidden;
-    }
-
-    .admin-container {
-        display: flex;
-        min-height: 100vh;
-    }
-
-    /* Sidebar Styles */
-    .sidebar {
-        width: 260px;
-        background: var(--dark);
-        box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
-        z-index: 100;
-        display: flex;
-        flex-direction: column;
-        position: fixed;
-        height: 100vh;
-        transition: all 0.3s ease;
-        overflow-y: auto;
-    }
-
-    .sidebar::-webkit-scrollbar{
-        display:none;
-    }
-
-    .sidebar-header {
-        padding: 1.8rem 1.5rem;
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        text-align: center;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .sidebar-header h2 {
-        font-size: 1.6rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-    }
-
-    .sidebar-menu {
-        padding: 1.5rem 0;
-        flex-grow: 1;
-    }
-
-    .menu-item {
-        padding: 1rem 1.8rem;
-        display: flex;
-        align-items: center;
-        color: var(--text-light);
-        text-decoration: none;
-        transition: all 0.3s ease;
-        margin: 0.3rem 0.8rem;
-        border-radius: 8px;
-    }
-
-    .menu-item:hover, .menu-item.active {
-        background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
-        border-left: 4px solid var(--primary);
-        transform: translateX(5px);
-    }
-
-    .menu-item i {
-        margin-right: 12px;
-        font-size: 1.3rem;
-        width: 24px;
-        text-align: center;
-    }
-
-    .sidebar-footer {
-        padding: 1.2rem;
-        border-top: 1px solid var(--border-color);
-        text-align: center;
-        background: rgba(0, 0, 0, 0.2);
-    }
-
-    /* Main Content Styles */
-    .main-content {
-        flex: 1;
-        padding: 2.2rem;
-        margin-left: 260px;
-        overflow-y: auto;
-        width: calc(100% - 260px);
-    }
-
-    .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 2.2rem;
-        padding-bottom: 1.2rem;
-        border-bottom: 1px solid var(--border-color);
-        flex-wrap: wrap;
-        gap: 1rem;
-    }
-
-    .welcome h1 {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 700;
-    }
-
-    .welcome p {
-        color: var(--text-muted);
-        font-size: 1rem;
-    }
-
-    .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 1.2rem;
-        flex-wrap: wrap;
-    }
-
-    .logout-btn {
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        color: white;
-        border: none;
-        padding: 0.6rem 1.6rem;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: 500;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        box-shadow: 0 4px 10px rgba(255, 60, 126, 0.3);
-        text-decoration: none;
-    }
-
-    .logout-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 15px rgba(255, 60, 126, 0.4);
-    }
-
-    /* Dashboard Sections */
-    .dashboard-section {
-        background: var(--card-bg);
-        border-radius: 12px;
-        padding: 1.8rem;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-        border: 1px solid var(--border-color);
-        margin-bottom: 2.2rem;
-        overflow: hidden;
-    }
-
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.8rem;
-        border-bottom: 1px solid var(--border-color);
-        flex-wrap: wrap;
-        gap: 1rem;
-    }
-
-    .section-title {
-        font-size: 1.3rem;
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        font-weight: 600;
-    }
-
-    .view-all {
-        color: var(--primary);
-        text-decoration: none;
-        font-weight: 500;
-        font-size: 0.9rem;
-        transition: all 0.3s ease;
-    }
-
-    .view-all:hover {
-        color: var(--secondary);
-        text-decoration: underline;
-    }
-
-    /* Tables */
-    .data-table {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 800px;
-    }
-
-    .data-table th, .data-table td {
-        padding: 1.2rem;
-        text-align: left;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .data-table th {
-        color: var(--text-muted);
-        font-weight: 600;
-        font-size: 0.95rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .data-table tr:last-child td {
-        border-bottom: none;
-    }
-
-    .data-table tr:hover {
-        background: rgba(255, 255, 255, 0.05);
-    }
-
-    .status {
-        padding: 0.4rem 1rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        display: inline-block;
-    }
-
-    .status-active {
-        background: rgba(0, 184, 148, 0.2);
-        color: var(--success);
-        border: 1px solid rgba(0, 184, 148, 0.3);
-    }
-
-    .status-inactive {
-        background: rgba(253, 203, 110, 0.2);
-        color: var(--warning);
-        border: 1px solid rgba(253, 203, 110, 0.3);
-    }
-
-    .status-maintenance {
-        background: rgba(214, 48, 49, 0.2);
-        color: var(--danger);
-        border: 1px solid rgba(214, 48, 49, 0.3);
-    }
-
-    /* Form Styles */
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .form-group {
-        margin-bottom: 1.5rem;
-    }
-
-    .form-label {
-        display: block;
-        margin-bottom: 0.5rem;
-        color: var(--text-light);
-        font-weight: 500;
-    }
-
-    .form-control {
-        width: 100%;
-        padding: 0.8rem 1rem;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        color: var(--text-light);
-        font-size: 1rem;
-        transition: all 0.3s ease;
-    }
-
-    .form-control:focus {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 2px rgba(255, 60, 126, 0.2);
-    }
-
-    .form-control option{
-        background: var(--card-bg);
-        border: 1px solid var(--border-color);
-        /* border-radius: 6px; */
-        color: var(--text-light);
-    }
-
-    .form-text {
-        color: var(--text-muted);
-        font-size: 0.85rem;
-        margin-top: 0.3rem;
-    }
-
-    .btn {
-        padding: 0.8rem 1.5rem;
-        border: none;
-        border-radius: 6px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        white-space: nowrap;
-        text-decoration: none;
-        font-size: 0.95rem;
-    }
-
-    .btn-primary {
-        background: linear-gradient(to right, var(--primary), var(--secondary));
-        color: white;
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(255, 60, 126, 0.3);
-    }
-
-    .btn-secondary {
-        background: rgba(255, 255, 255, 0.1);
-        color: var(--text-light);
-        border: 1px solid var(--border-color);
-    }
-
-    .btn-secondary:hover {
-        background: rgba(255, 255, 255, 0.2);
-    }
-
-    .btn-danger {
-        background: rgba(214, 48, 49, 0.2);
-        color: var(--danger);
-        border: 1px solid rgba(214, 48, 49, 0.3);
-    }
-
-    .btn-danger:hover {
-        background: rgba(214, 48, 49, 0.3);
-    }
-
-    .btn-success {
-        background: rgba(0, 184, 148, 0.2);
-        color: var(--success);
-        border: 1px solid rgba(0, 184, 148, 0.3);
-    }
-
-    .btn-success:hover {
-        background: rgba(0, 184, 148, 0.3);
-    }
-
-    .btn-sm {
-        padding: 0.5rem 1rem;
-        font-size: 0.85rem;
-    }
-
-    .action-buttons {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-
-    /* Admin badge and time */
-    .admin-badge {
-        background: rgba(255, 60, 126, 0.2);
-        padding: 0.6rem 1.2rem;
-        border-radius: 20px;
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        font-weight: 500;
-        border: 1px solid rgba(255, 60, 126, 0.3);
-        white-space: nowrap;
-    }
-
-    .admin-badge i {
-        color: var(--primary);
-    }
-
-    .admin-name {
-        color: var(--primary);
-        font-weight: 600;
-    }
-
-    .current-time {
-        background: rgba(11, 180, 201, 0.2);
-        padding: 0.6rem 1.2rem;
-        border-radius: 20px;
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        font-weight: 500;
-        border: 1px solid rgba(11, 180, 201, 0.3);
-        white-space: nowrap;
-    }
-
-    .current-time i {
-        color: var(--secondary);
-    }
-
-    /* Mobile menu toggle */
-    .menu-toggle {
-        display: none;
-        background: none;
-        border: none;
-        color: var(--text-light);
-        font-size: 1.5rem;
-        cursor: pointer;
-        padding: 0.5rem;
-        z-index: 1001;
-        position: fixed;
-        top: 1rem;
-        left: 1rem;
-        background: var(--card-bg);
-        border-radius: 6px;
-    }
-
-    /* Table container for horizontal scrolling */
-    .table-container {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        margin: 0 -1.8rem;
-        padding: 0 1.8rem;
-    }
-
-    /* Card view for mobile */
-    .games-cards {
-        display: none;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .game-card {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 8px;
-        padding: 1rem;
-        border: 1px solid var(--border-color);
-    }
-
-    .game-row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .game-row:last-child {
-        margin-bottom: 0;
-        border-bottom: none;
-    }
-
-    .game-label {
-        color: var(--text-muted);
-        font-weight: 500;
-        min-width: 120px;
-    }
-
-    .game-value {
-        text-align: right;
-        flex: 1;
-    }
-
-    .game-actions {
-        display: flex;
-        gap: 0.5rem;
-        margin-top: 1rem;
-        flex-wrap: wrap;
-    }
-
-    /* Alert Messages */
-    .alert {
-        padding: 1rem;
-        border-radius: 6px;
-        margin-bottom: 1.5rem;
-        border: 1px solid;
-    }
-
-    .alert-success {
-        background: rgba(0, 184, 148, 0.2);
-        border-color: rgba(0, 184, 148, 0.3);
-        color: var(--success);
-    }
-
-    .alert-error {
-        background: rgba(214, 48, 49, 0.2);
-        border-color: rgba(214, 48, 49, 0.3);
-        color: var(--danger);
-    }
-
-    /* Tabs */
-    .tabs {
-        display: flex;
-        margin-bottom: 1.5rem;
-        border-bottom: 1px solid var(--border-color);
-        flex-wrap: wrap;
-    }
-
-    .tab {
-        padding: 0.8rem 1.5rem;
-        background: none;
-        border: none;
-        color: var(--text-muted);
-        cursor: pointer;
-        transition: all 0.3s ease;
-        border-bottom: 2px solid transparent;
-        font-weight: 500;
-    }
-
-    .tab.active {
-        color: var(--primary);
-        border-bottom-color: var(--primary);
-    }
-
-    .tab-content {
-        display: none;
-    }
-
-    .tab-content.active {
-        display: block;
-    }
-
-    /* Responsive Design */
-    @media (max-width: 1200px) {
-        .main-content {
-            padding: 1.5rem;
-        }
-        
-        .form-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    @media (max-width: 992px) {
-        .sidebar {
-            width: 80px;
-            transform: translateX(0);
-        }
-        
-        .sidebar-header h2 {
-            font-size: 1.2rem;
-        }
-        
-        .menu-item span {
-            display: none;
-        }
-        
-        .menu-item {
-            justify-content: center;
-            padding: 1rem;
-        }
-        
-        .menu-item i {
-            margin-right: 0;
-        }
-        
-        .sidebar-footer {
-            padding: 0.8rem;
-        }
-        
-        .main-content {
-            margin-left: 80px;
-            padding: 1.5rem;
-            width: calc(100% - 80px);
-        }
-        
-        .header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 1.2rem;
-        }
-        
-        .header-actions {
-            width: 100%;
-            justify-content: space-between;
-        }
-        
-        .menu-toggle {
-            display: block;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .header-actions {
-            flex-direction: column;
-            gap: 1rem;
-            width: 100%;
-        }
-        
-        .admin-badge, .current-time {
-            width: 100%;
-            justify-content: center;
-        }
-        
-        .main-content {
-            padding: 1rem;
-        }
-        
-        .dashboard-section {
-            padding: 1rem;
-        }
-        
-        .table-container {
-            margin: 0 -1rem;
-            padding: 0 1rem;
-        }
-        
-        .data-table {
-            display: none;
-        }
-        
-        .games-cards {
-            display: flex;
-        }
-        
-        .section-header {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        
-        .view-all {
-            align-self: flex-end;
-        }
-        
-        .tabs {
-            flex-direction: column;
-        }
-        
-        .tab {
-            border-bottom: 1px solid var(--border-color);
-            border-left: 2px solid transparent;
-        }
-        
-        .tab.active {
-            border-left-color: var(--primary);
-            border-bottom-color: var(--border-color);
-        }
-    }
-
-    @media (max-width: 576px) {
-        .sidebar {
-            width: 0;
-            transform: translateX(-100%);
-        }
-        
-        .sidebar.active {
-            width: 260px;
-            transform: translateX(0);
-        }
-        
-        .main-content {
-            margin-left: 0;
-            padding: 1rem;
-            width: 100%;
-        }
-        
-        .header {
-            margin-top: 3rem;
-        }
-        
-        .welcome h1 {
-            font-size: 1.5rem;
-        }
-        
-        .dashboard-section {
-            padding: 0.8rem;
-        }
-        
-        .table-container {
-            margin: 0 -0.8rem;
-            padding: 0 0.8rem;
-        }
-        
-        .game-card {
-            padding: 0.8rem;
-        }
-        
-        .game-label {
-            min-width: 100px;
-            font-size: 0.9rem;
-        }
-        
-        .btn {
-            padding: 0.7rem 1.2rem;
-            font-size: 0.9rem;
-        }
-        
-        .btn-sm {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.8rem;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .main-content {
-            padding: 0.5rem;
-        }
-        
-        .dashboard-section {
-            padding: 0.7rem;
-            border-radius: 8px;
-        }
-        
-        .header {
-            margin-bottom: 1.5rem;
-        }
-        
-        .welcome h1 {
-            font-size: 1.3rem;
-        }
-        
-        .welcome p {
-            font-size: 0.9rem;
-        }
-        
-        .section-title {
-            font-size: 1.1rem;
-        }
-        
-        .btn {
-            padding: 0.6rem 1rem;
-            font-size: 0.85rem;
-        }
-        
-        .game-card {
-            padding: 0.7rem;
-        }
-        
-        .game-row {
-            flex-direction: column;
-            gap: 0.3rem;
-        }
-        
-        .game-label, .game-value {
-            width: 100%;
-            text-align: left;
-        }
-        
-        .admin-badge, .current-time, .logout-btn {
-            font-size: 0.9rem;
-            padding: 0.5rem 1rem;
-        }
-        
-        .game-actions {
-            flex-direction: column;
-        }
-        
-        .game-actions .btn {
-            width: 100%;
-            justify-content: center;
-        }
-    }
-
-    @media (max-width: 400px) {
-        .main-content {
-            padding: 0.4rem;
-        }
-        
-        .dashboard-section {
-            padding: 0.6rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .header {
-            margin-bottom: 1rem;
-        }
-        
-        .welcome h1 {
-            font-size: 1.2rem;
-        }
-        
-        .section-title {
-            font-size: 1rem;
-        }
-        
-        .btn {
-            padding: 0.5rem 0.8rem;
-            font-size: 0.8rem;
-        }
-        
-        .form-control {
-            padding: 0.7rem 0.8rem;
-            font-size: 0.9rem;
-        }
-
-        
-        
-        .game-card {
-            padding: 0.6rem;
-        }
-        
-        .admin-badge, .current-time, .logout-btn {
-            font-size: 0.85rem;
-            padding: 0.4rem 0.8rem;
-        }
-        
-        .status {
-            padding: 0.3rem 0.8rem;
-            font-size: 0.8rem;
-        }
-    }
-
-    /* Utility classes */
-    .text-center {
-        text-align: center;
-    }
-
-    .text-right {
-        text-align: right;
-    }
-
-    .mt-1 { margin-top: 0.5rem; }
-    .mt-2 { margin-top: 1rem; }
-    .mt-3 { margin-top: 1.5rem; }
-    .mb-1 { margin-bottom: 0.5rem; }
-    .mb-2 { margin-bottom: 1rem; }
-    .mb-3 { margin-bottom: 1.5rem; }
-    .p-1 { padding: 0.5rem; }
-    .p-2 { padding: 1rem; }
-    .p-3 { padding: 1.5rem; }
-
-    /* Loading animation */
-    .loading {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
-        border-radius: 50%;
-        border-top-color: var(--primary);
-        animation: spin 1s ease-in-out infinite;
-    }
-
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
-    </style>
 </head>
 <body>
     <!-- Mobile Menu Toggle -->
@@ -1017,53 +306,67 @@ if (isset($_GET['edit'])) {
                 <h2>RB Games</h2>
             </div>
             <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
+                <a href="super_admin_dashboard.php" class="menu-item ">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
-                <a href="users.php" class="menu-item">
+                <a href="super_admin_manage_admins.php" class="menu-item">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="super_admin_all_users.php" class="menu-item ">
                     <i class="fas fa-users"></i>
-                    <span>Users</span>
+                    <span>All Users</span>
                 </a>
-                
-                
-                <a href="todays_active_games.php" class="menu-item ">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
+                <a href="super_admin_transactions.php" class="menu-item">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>All Transactions</span>
                 </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item ">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
+                <a href="super_admin_withdrawals.php" class="menu-item">
                     <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
+                    <span>All Withdrawals</span>
                 </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
+                <a href="super_admin_deposits.php" class="menu-item">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>All Deposits</span>
                 </a>
-                
-                <a href="admin_reports.php" class="menu-item">
+                <a href="admin_games.php" class="menu-item active">
+                    <i class="fa-regular fa-pen-to-square"></i>
+                    <span>Edit Games</span>
+                </a>
+                <a href="edit_result.php" class="menu-item ">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Edit Result</span>
+                </a>
+                <a href="super_admin_applications.php" class="menu-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>All Applications</span>
+                </a>
+                <a href="super_admin_reports.php" class="menu-item">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
+                    <span>Platform Reports</span>
                 </a>
-                <a href="admin_profile.php" class="menu-item ">
+                <a href="profit_loss.php" class="menu-item ">
+                    <i class="fa-solid fa-sack-dollar"></i>
+                    <span>Profit & Loss</span>
+                </a>
+                <a href="adminlog.php" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>Admin Logs</span>
+                </a>
+                <a href="super_admin_profile.php" class="menu-item">
                     <i class="fas fa-user"></i>
                     <span>Profile</span>
+                </a>
+
+                <a href="super_admin_settings.php" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Platform Settings</span>
                 </a>
             </div>
             <div class="sidebar-footer">
                 <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
+                    <p>Logged in as <strong><?php echo $super_admin_username; ?></strong></p>
                 </div>
             </div>
         </div>
@@ -1076,11 +379,17 @@ if (isset($_GET['edit'])) {
                     <p>Create and manage matka games</p>
                 </div>
                 <div class="header-actions">
+                    <div class="current-time">
+                        <i class="fas fa-clock"></i>
+                        <span id="currentTime"><?php echo date('F j, Y g:i A'); ?></span>
+                    </div>
+                    
                     <div class="admin-badge">
                         <i class="fas fa-user-shield"></i>
-                        <span><?php echo $admin_username; ?></span>
+                        <span class="admin-name">Super Admin: <?php echo htmlspecialchars($super_admin_username); ?></span>
                     </div>
-                    <a href="admin_logout.php" class="logout-btn">
+                    
+                    <a href="super_admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -1236,10 +545,38 @@ if (isset($_GET['edit'])) {
                         <a href="admin_games.php" class="view-all">Back to List</a>
                     </div>
                     
-                    <form method="POST" id="gameForm">
+                    <form method="POST" id="gameForm" enctype="multipart/form-data">
                         <?php if (isset($_GET['edit'])): ?>
                             <input type="hidden" name="game_id" value="<?php echo $edit_game['id']; ?>">
                         <?php endif; ?>
+                        
+                        <!-- Image Upload Section -->
+                        <div class="image-upload-container">
+                            <div class="image-note">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <strong>Please make sure the image should be in landscape for better resolution</strong>
+                            </div>
+                            
+                            <?php if (isset($edit_game) && !empty($edit_game['dynamic_images'])): ?>
+                                <div class="current-image">
+                                    <label class="form-label">Current Image:</label>
+                                    <div>
+                                        <img src="../<?php echo $edit_game['dynamic_images']; ?>" alt="<?php echo $edit_game['name']; ?>" 
+                                             onerror="this.style.display='none'">
+                                    </div>
+                                    <div class="form-text">Current game image</div>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="dynamic_images">Game Image</label>
+                                <input type="file" class="form-control" id="dynamic_images" name="dynamic_images" 
+                                       accept="image/*" onchange="previewImage(this)">
+                                <div class="form-text">Upload a landscape image for the game (JPG, PNG, GIF, WEBP - Max 5MB)</div>
+                            </div>
+                            
+                            <img id="imagePreview" class="image-preview" src="#" alt="Image preview">
+                        </div>
                         
                         <div class="form-grid">
                             <div class="form-group">
@@ -1384,6 +721,24 @@ if (isset($_GET['edit'])) {
             });
         });
         
+        // Image preview functionality
+        function previewImage(input) {
+            const preview = document.getElementById('imagePreview');
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                }
+                
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.style.display = 'none';
+                preview.src = '#';
+            }
+        }
+        
         // Form validation
         document.getElementById('gameForm')?.addEventListener('submit', function(e) {
             const openTime = document.getElementById('open_time').value;
@@ -1409,6 +764,26 @@ if (isset($_GET['edit'])) {
                 alert('Minimum bet must be less than maximum bet!');
                 e.preventDefault();
                 return;
+            }
+            
+            // Image file validation
+            const imageInput = document.getElementById('dynamic_images');
+            if (imageInput.files.length > 0) {
+                const file = imageInput.files[0];
+                const fileSize = file.size / 1024 / 1024; // in MB
+                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                
+                if (!allowedTypes.includes(file.type)) {
+                    alert('Please select a valid image file (JPG, JPEG, PNG, GIF, or WEBP).');
+                    e.preventDefault();
+                    return;
+                }
+                
+                if (fileSize > 5) {
+                    alert('Image size must be less than 5MB.');
+                    e.preventDefault();
+                    return;
+                }
             }
         });
         

@@ -138,713 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-$title = "Admin Profile - RB Games";
+$pagefilename = "profile";
+
+include "includes/header.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $title; ?></title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --primary: #ff3c7e;
-            --secondary: #0fb4c9;
-            --accent: #00cec9;
-            --dark: #1a1a2e;
-            --darker: #16213e;
-            --success: #00b894;
-            --warning: #fdcb6e;
-            --danger: #d63031;
-            --text-light: #f5f6fa;
-            --text-muted: rgba(255, 255, 255, 0.7);
-            --card-bg: rgba(26, 26, 46, 0.8);
-            --border-color: rgba(255, 60, 126, 0.15);
-        }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
-        }
-
-        body {
-            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
-            color: var(--text-light);
-            min-height: 100vh;
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-
-        .admin-container {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        /* Sidebar Styles (same as before) */
-        .sidebar {
-            width: 260px;
-            background: var(--dark);
-            box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            height: 100vh;
-            transition: all 0.3s ease;
-            overflow-y: auto;
-            left: 0;
-            top: 0;
-        }
-
-        .sidebar::-webkit-scrollbar{
-            display:none;
-        }
-
-        .sidebar.active {
-            left: 0;
-        }
-
-        .sidebar-header {
-            padding: 1.8rem 1.5rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            text-align: center;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .sidebar-header h2 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-
-        .sidebar-menu {
-            padding: 1.5rem 0;
-            flex-grow: 1;
-        }
-
-        .menu-item {
-            padding: 1rem 1.8rem;
-            display: flex;
-            align-items: center;
-            color: var(--text-light);
-            text-decoration: none;
-            transition: all 0.3s ease;
-            margin: 0.3rem 0.8rem;
-            border-radius: 8px;
-        }
-
-        .menu-item:hover, .menu-item.active {
-            background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
-            border-left: 4px solid var(--primary);
-            transform: translateX(5px);
-        }
-
-        .menu-item i {
-            margin-right: 12px;
-            font-size: 1.3rem;
-            width: 24px;
-            text-align: center;
-        }
-
-        .sidebar-footer {
-            padding: 1.2rem;
-            border-top: 1px solid var(--border-color);
-            text-align: center;
-            background: rgba(0, 0, 0, 0.2);
-        }
-
-        /* Main Content Styles */
-        .main-content {
-            flex: 1;
-            padding: 2.2rem;
-            margin-left: 260px;
-            overflow-y: auto;
-            transition: all 0.3s ease;
-            min-height: 100vh;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2.2rem;
-            padding-bottom: 1.2rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .welcome h1 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 700;
-        }
-
-        .welcome p {
-            color: var(--text-muted);
-            font-size: 1rem;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 1.2rem;
-        }
-
-        .logout-btn {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            padding: 0.6rem 1.6rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            box-shadow: 0 4px 10px rgba(255, 60, 126, 0.3);
-            text-decoration: none;
-        }
-
-        .logout-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(255, 60, 126, 0.4);
-        }
-
-        /* Profile Content Styles */
-        .profile-container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-
-        .profile-section {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 1.8rem;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border-color);
-            margin-bottom: 2.2rem;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 0.8rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .section-title {
-            font-size: 1.3rem;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            font-weight: 600;
-        }
-
-        .profile-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.8rem;
-        }
-
-        @media (max-width: 768px) {
-            .profile-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .info-group {
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
-
-        .info-label {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        #referral-code{
-            /* background-color: red; */
-            /* background: linear-gradient(to right, red, blue); */
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: transparent;
-            -webkit-background-clip: text;
-            font-weight: 600;
-        }
-
-        #referral-span{
-            display:inline;
-            background: linear-gradient(to right, red, blue);
-            -webkit-background-clip: text;
-            color: transparent;
-            font-size: 16px;
-            font-weight: 700;
-        }
-
-        .fa-copy{
-            
-            background-color: var(--dark); 
-            background: linear-gradient(to right, pink, skyblue);
-            -webkit-background-clip: text;
-            color: transparent;
-            cursor:pointer; 
-            font-size: 20px;
-        }
-
-        .edit-icon {
-            color: var(--primary);
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s ease;
-            opacity: 0.7;
-        }
-
-        .edit-icon:hover {
-            opacity: 1;
-            transform: scale(1.1);
-        }
-
-        .info-value {
-            font-size: 1.1rem;
-            font-weight: 500;
-            padding: 0.8rem 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            min-height: 50px;
-            display: flex;
-            align-items: center;
-        }
-
-        .uneditable-field {
-            background: rgba(255, 255, 255, 0.02);
-            color: var(--text-muted);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .uneditable-field .edit-icon {
-            display: none;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-label {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
-            display: block;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            color: var(--text-light);
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(255, 60, 126, 0.2);
-        }
-
-        .btn {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            padding: 0.8rem 1.6rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.6rem;
-            text-decoration: none;
-            font-size: 1rem;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(255, 60, 126, 0.4);
-        }
-
-        .btn-block {
-            display: block;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .alert {
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-            border: 1px solid;
-        }
-
-        .alert-success {
-            background: rgba(0, 184, 148, 0.2);
-            border-color: rgba(0, 184, 148, 0.3);
-            color: var(--success);
-        }
-
-        .alert-error {
-            background: rgba(214, 48, 49, 0.2);
-            border-color: rgba(214, 48, 49, 0.3);
-            color: var(--danger);
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 10000;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(5px);
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 2rem;
-            width: 90%;
-            max-width: 500px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            transform: translateY(-20px);
-            opacity: 0;
-            transition: all 0.3s ease;
-        }
-
-        .modal.active .modal-content {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .modal-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-        }
-
-        .modal-close:hover {
-            color: var(--text-light);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .modal-body {
-            margin-bottom: 1.5rem;
-        }
-
-        .modal-footer {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-        }
-
-        /* Password Modal Specific */
-        .password-strength {
-            height: 4px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
-            margin-top: 0.5rem;
-            overflow: hidden;
-        }
-
-        .password-strength-fill {
-            height: 100%;
-            transition: all 0.3s ease;
-            border-radius: 2px;
-        }
-
-        .strength-weak {
-            background: var(--danger);
-            width: 33%;
-        }
-
-        .strength-medium {
-            background: var(--warning);
-            width: 66%;
-        }
-
-        .strength-strong {
-            background: var(--success);
-            width: 100%;
-        }
-
-        /* Mobile menu toggle */
-        .menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: var(--text-light);
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0.5rem;
-            z-index: 1001;
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            background: var(--card-bg);
-            border-radius: 6px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Overlay for mobile */
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 999;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 993px) {
-            .sidebar {
-                width: 260px;
-                left: 0;
-                position: fixed;
-            }
-            
-            .sidebar-header h2 {
-                font-size: 1.2rem;
-            }
-
-            .menu-item span {
-                display: none;
-            }
-
-            .menu-item {
-                justify-content: center;
-                padding: 1rem;
-            }
-            
-            .menu-item i {
-                margin-right: 0;
-            }
-            
-            .sidebar-footer {
-                padding: 0.8rem;
-            }
-            
-            .main-content {
-                margin-left: 80px;
-                padding: 1.5rem;
-            }
-            
-            .header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1.2rem;
-            }
-            
-            .header-actions {
-                width: 100%;
-                justify-content: space-between;
-            }
-            
-            .menu-toggle {
-                display: block;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 260px;
-                left: -260px;
-            }
-            .sidebar.active {
-                left: 0;
-            }
-            
-            .header-actions {
-                flex-direction: column;
-                gap: 1rem;
-            }
-            
-            .main-content {
-                padding: 1rem;
-            }
-            
-            .modal-content {
-                padding: 1.5rem;
-                margin: 1rem;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .sidebar {
-                width: 0;
-                transform: translateX(-100%);
-            }
-            
-            .sidebar.active {
-                width: 260px;
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
-            
-            .menu-toggle {
-                display: block;
-            }
-            
-            .header {
-                margin-top: 3rem;
-            }
-            
-            .welcome h1 {
-                font-size: 1.5rem;
-            }
-            
-            .profile-section {
-                padding: 1rem;
-            }
-            
-            .modal-footer {
-                flex-direction: column;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="admin-container">
-        <!-- Mobile Menu Toggle -->
-        <button class="menu-toggle" id="menuToggle">
-            <i class="fas fa-bars"></i>
-        </button>
-
-        <!-- Overlay for mobile -->
-        <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-        <!-- Sidebar -->
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>RB Games</h2>
-            </div>
-            <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="users.php" class="menu-item">
-                    <i class="fas fa-users"></i>
-                    <span>Users</span>
-                </a>
-                <a href="todays_active_games.php" class="menu-item">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
-                </a>
-                <a href="game_sessions_history.php" class="menu-item">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
-                </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
-                </a>
-                <a href="admin_reports.php" class="menu-item">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
-                </a>
-                <a href="admin_profile.php" class="menu-item active">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
-            </div>
-            <div class="sidebar-footer">
-                <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
-                </div>
-            </div>
-        </div>
 
         <!-- Main Content -->
         <div class="main-content" id="mainContent">
@@ -854,9 +152,9 @@ $title = "Admin Profile - RB Games";
                     <p>Manage your account details and security settings</p>
                 </div>
                 <div class="header-actions">
-                    <div class="current-time">
-                        <i class="fas fa-clock"></i>
-                        <span><?php echo date('l, F j, Y'); ?></span>
+                    <div class="admin-badge">
+                        <i class="fas fa-user-shield"></i>
+                        <span><?php echo $admin_username; ?></span>
                     </div>
                     <a href="admin_logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
@@ -884,7 +182,12 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Username
+
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="username" data-value="<?php echo htmlspecialchars($admin_data['username']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['username']); ?></div>
                         </div>
@@ -892,7 +195,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Phone
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="phone" data-value="<?php echo htmlspecialchars($admin_data['phone']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['phone']); ?></div>
                         </div>
@@ -900,7 +207,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Email
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="email" data-value="<?php echo htmlspecialchars($admin_data['email']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['email']); ?></div>
                         </div>
@@ -908,7 +219,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 UPI ID
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="upiId" data-value="<?php echo htmlspecialchars($admin_data['upiId']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['upiId']); ?></div>
                         </div>
@@ -916,7 +231,11 @@ $title = "Admin Profile - RB Games";
                         <div class="info-group">
                             <span class="info-label">
                                 Address
+                                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
                                 <i class="fas fa-edit edit-icon" data-field="address" data-value="<?php echo htmlspecialchars($admin_data['address']); ?>"></i>
+                <?php endif; ?>
                             </span>
                             <div class="info-value"><?php echo htmlspecialchars($admin_data['address']); ?></div>
                         </div>
@@ -959,16 +278,21 @@ $title = "Admin Profile - RB Games";
                     </div>
                 </div>
 
-                <!-- Change Password Section -->
-                <div class="profile-section">
-                    <div class="section-header">
-                        <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
+                <?php if($admin_data['status'] == 'suspend'):?>
+                            
+                <?php else:?>
+
+                    <!-- Change Password Section -->
+                    <div class="profile-section">
+                        <div class="section-header">
+                            <h2 class="section-title"><i class="fas fa-lock"></i> Security</h2>
+                        </div>
+                        
+                        <button type="button" class="btn" id="changePasswordBtn">
+                            <i class="fas fa-key"></i> Change Password
+                        </button>
                     </div>
-                    
-                    <button type="button" class="btn" id="changePasswordBtn">
-                        <i class="fas fa-key"></i> Change Password
-                    </button>
-                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -1240,5 +564,7 @@ $title = "Admin Profile - RB Games";
 
         });
     </script>
+
+
 </body>
 </html>

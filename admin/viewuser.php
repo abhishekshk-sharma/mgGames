@@ -25,7 +25,7 @@ if (!$user) {
 // Get admin details for referral code
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
-$admin_stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$admin_stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $admin_stmt->bind_param("i", $admin_id);
 $admin_stmt->execute();
 $referral_result = $admin_stmt->get_result();
@@ -215,22 +215,53 @@ $user_transactions = getUserTransactionsPaginated($conn, $user_id, $transactions
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_balance'])) {
     $new_balance = $_POST['new_balance'];
     $reason = sanitize_input($conn, $_POST['reason']);
+
+
+    $stmt = $conn->prepare("SELECT * FROM admin_requests wHERE user_id = ? AND status = 'pending' AND title = 'Balance Update Request'");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+
+        $update_stmt = $conn->prepare("UPDATE `admin_requests` SET  `amount` = ? WHERE user_id = ? AND status = 'pending' AND title = 'Balance Update Request'");
+        $update_stmt->bind_param("di", $new_balance, $user_id   );
+        $update_stmt->execute();
+
+
+        $_SESSION['success_message'] = "Request to update user balance updated successfully!";
+        header("Location: viewuser.php?id=" . $user_id . "&tab=" . $active_tab);
+        exit();
+    }
+
+
+    $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+
+    $previous_amount = $user['balance'];
+
+
+
     
+    $title = 'Balance Update Request';
+    $description = "Admin $admin_username requested a balance update for user {$user['username']} from $previous_amount to $new_balance (".($new_balance - $previous_amount)." Rs). Reason: $reason";  
     // Update user balance
-    $update_stmt = $conn->prepare("UPDATE users SET balance = ? WHERE id = ?");
-    $update_stmt->bind_param("di", $new_balance, $user_id);
+    $update_stmt = $conn->prepare("INSERT INTO `admin_requests`( `admin_id`, `user_id`, `amount`, `title`, `description`, `status`, `created_at`) VALUES (?,?,?,?,?,'pending',NOW())");
+    $update_stmt->bind_param("iidss", $admin_id, $user_id, $new_balance, $title, $description);
     $update_stmt->execute();
     
     // Log the transaction
-    $transaction_stmt = $conn->prepare("
-        INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, description, status) 
-        VALUES (?, 'adjustment', ?, ?, ?, ?, 'completed')
-    ");
-    $amount_diff = $new_balance - $user['balance'];
-    $transaction_stmt->bind_param("iddds", $user_id, $amount_diff, $user['balance'], $new_balance, $reason);
-    $transaction_stmt->execute();
+    // $transaction_stmt = $conn->prepare("
+    //     INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, description, status) 
+    //     VALUES (?, 'adjustment', ?, ?, ?, ?, 'completed')
+    // ");
+    // $amount_diff = $new_balance - $user['balance'];
+    // $transaction_stmt->bind_param("iddds", $user_id, $amount_diff, $user['balance'], $new_balance, $reason);
+    // $transaction_stmt->execute();
     
-    $_SESSION['success_message'] = "User balance updated successfully!";
+    $_SESSION['success_message'] = " Request to update user balance submitted successfully!";
     header("Location: viewuser.php?id=" . $user_id . "&tab=" . $active_tab);
     exit();
 }
@@ -250,11 +281,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_status'])) {
 
 // Handle delete user
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
-    $delete_stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
-    $delete_stmt->bind_param("i", $user_id);
+
+    $stmt = $conn->prepare("SELECT * FROM admin_requests wHERE user_id = ? AND status = 'pending' AND title = 'User Deletion'");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $_SESSION['error_message'] = "There is already a pending user deletion request for this user.";
+        header("Location: viewuser.php?id=" . $user_id . "&tab=" . $active_tab);
+        exit();
+    }
+
+    $title = "User Deletion";
+    $description = "User account deleted by admin: " . $admin_username;
+    $delete_stmt = $conn->prepare("INSERT INTO `admin_requests`( `admin_id`, `user_id`, `title`, `description`, `status`, `created_at`) VALUES (?,?,?,?,'pending',NOW())");
+    $delete_stmt->bind_param("iiss", $admin_id, $user_id, $title, $description);
     $delete_stmt->execute();
     
-    $_SESSION['success_message'] = "User deleted successfully!";
+    $_SESSION['success_message'] = "Request to delete user submitted successfully!";
     header("Location: users.php");
     exit();
 }
@@ -334,705 +378,12 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
     
     return $url;
 }
+
+$pagefilename = "viewuser";
+
+include "includes/header.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Details - <?= htmlspecialchars($user['username']) ?> | RB Games Admin</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-        <style>
-        :root {
-            --primary: #ff3c7e;
-            --secondary: #0fb4c9;
-            --accent: #00cec9;
-            --dark: #1a1a2e;
-            --darker: #16213e;
-            --success: #00b894;
-            --warning: #fdcb6e;
-            --danger: #d63031;
-            --text-light: #f5f6fa;
-            --text-muted: rgba(255, 255, 255, 0.7);
-            --card-bg: rgba(26, 26, 46, 0.8);
-            --border-color: rgba(255, 60, 126, 0.15);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
-        }
-
-        body {
-            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
-            color: var(--text-light);
-            min-height: 100vh;
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-
-        .admin-container {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: 260px;
-            background: var(--dark);
-            box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            height: 100vh;
-            transition: all 0.3s ease;
-            left: 0;
-            top: 0;
-            overflow-x: scroll;
-        }
-        .sidebar::-webkit-scrollbar{
-            display:none;
-        }
-
-        .sidebar-header {
-            padding: 1.8rem 1.5rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            text-align: center;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .sidebar-header h2 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-
-        .sidebar-menu {
-            padding: 1.5rem 0;
-            flex-grow: 1;
-        }
-
-        .menu-item {
-            padding: 1rem 1.8rem;
-            display: flex;
-            align-items: center;
-            color: var(--text-light);
-            text-decoration: none;
-            transition: all 0.3s ease;
-            margin: 0.3rem 0.8rem;
-            border-radius: 8px;
-        }
-
-        .menu-item:hover, .menu-item.active {
-            background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
-            border-left: 4px solid var(--primary);
-            transform: translateX(5px);
-        }
-
-        .menu-item i {
-            margin-right: 12px;
-            font-size: 1.3rem;
-            width: 24px;
-            text-align: center;
-        }
-
-        .sidebar-footer {
-            padding: 1.2rem;
-            border-top: 1px solid var(--border-color);
-            text-align: center;
-            background: rgba(0, 0, 0, 0.2);
-        }
-
-        /* Main Content Styles */
-        .main-content {
-            flex: 1;
-            padding: 2.2rem;
-            margin-left: 260px;
-            width: calc(100% - 260px);
-            overflow-y: auto;
-            transition: all 0.3s ease;
-            min-height: 100vh;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2.2rem;
-            padding-bottom: 1.2rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .welcome h1 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 700;
-        }
-
-        .welcome p {
-            color: var(--text-muted);
-            font-size: 1rem;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 1.2rem;
-        }
-
-        .admin-badge {
-            background: rgba(255, 60, 126, 0.2);
-            padding: 0.6rem 1.2rem;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            font-weight: 500;
-            border: 1px solid rgba(255, 60, 126, 0.3);
-        }
-
-        .admin-badge i {
-            color: var(--primary);
-        }
-
-        .logout-btn {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            padding: 0.6rem 1.6rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            box-shadow: 0 4px 10px rgba(255, 60, 126, 0.3);
-            text-decoration: none;
-        }
-
-        .logout-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(255, 60, 126, 0.4);
-        }
-
-        /* Cards */
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 1.8rem;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border-color);
-            margin-bottom: 2.2rem;
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .card-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: var(--text-light);
-            margin: 0;
-        }
-
-        /* Financial Summary */
-        .financial-summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .summary-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 1.5rem;
-            text-align: center;
-            border: 1px solid var(--border-color);
-            transition: all 0.3s ease;
-        }
-
-        .summary-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-        }
-
-        .summary-card.balance { background: linear-gradient(135deg, var(--primary), #ff6b9c); }
-        .summary-card.deposits { background: linear-gradient(135deg, var(--success), #00d8a7); }
-        .summary-card.withdrawals { background: linear-gradient(135deg, var(--warning), #fed67c); }
-        .summary-card.bets { background: linear-gradient(135deg, var(--secondary), #1fd1eb); }
-
-        .summary-value {
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
-
-        .summary-label {
-            font-size: 0.9rem;
-            color: rgba(255, 255, 255, 0.9);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* Forms */
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: var(--text-light);
-            font-weight: 500;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            color: var(--text-light);
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(255, 60, 126, 0.2);
-        }
-
-        /* Buttons */
-        .btn {
-            padding: 0.8rem 1.5rem;
-            border: none;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            text-decoration: none;
-            font-size: 0.9rem;
-        }
-
-        .btn-primary {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 60, 126, 0.3);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text-light);
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning);
-            color: var(--dark);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-sm {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.85rem;
-        }
-
-        /* Tables */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .data-table th, .data-table td {
-            padding: 1.2rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .data-table th {
-            color: var(--text-muted);
-            font-weight: 600;
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .data-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .data-table tr:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .status {
-            padding: 0.4rem 1rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            display: inline-block;
-        }
-
-        .status-active {
-            background: rgba(0, 184, 148, 0.2);
-            color: var(--success);
-            border: 1px solid rgba(0, 184, 148, 0.3);
-        }
-
-        .status-pending {
-            background: rgba(253, 203, 110, 0.2);
-            color: var(--warning);
-            border: 1px solid rgba(253, 203, 110, 0.3);
-        }
-
-        .status-completed {
-            background: rgba(0, 184, 148, 0.2);
-            color: var(--success);
-            border: 1px solid rgba(0, 184, 148, 0.3);
-        }
-
-        .status-cancelled, .status-rejected {
-            background: rgba(214, 48, 49, 0.2);
-            color: var(--danger);
-            border: 1px solid rgba(214, 48, 49, 0.3);
-        }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            margin-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-            flex-wrap: wrap;
-        }
-
-        .tab {
-            padding: 1rem 1.5rem;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-            white-space: nowrap;
-        }
-
-        .tab.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* User Info Grid */
-        .user-info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .info-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 1.2rem;
-            border: 1px solid var(--border-color);
-        }
-
-        .info-label {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-
-        .info-value {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        /* Action buttons */
-        .action-buttons {
-            display: flex;
-            gap: 0.8rem;
-            flex-wrap: wrap;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 260px;
-                left: -260px;
-            }
-            .main-content {
-                margin-left: 0;
-                width: 100%;
-                padding: 1rem;
-            }
-            .header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-            .header-actions {
-                flex-direction: column;
-                width: 100%;
-                gap: 0.8rem;
-            }
-            .admin-badge, .logout-btn {
-                width: 100%;
-                justify-content: center;
-            }
-            .financial-summary {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .tabs {
-                overflow-x: auto;
-            }
-            .action-buttons {
-                flex-direction: column;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .financial-summary {
-                grid-template-columns: 1fr;
-            }
-            .user-info-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Success Message */
-        .alert {
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-            border: 1px solid transparent;
-        }
-
-        .alert-success {
-            background: rgba(0, 184, 148, 0.2);
-            color: var(--success);
-            border-color: rgba(0, 184, 148, 0.3);
-        }
-
-        .tbody {
-            position: relative;
-            overflow-x: auto;
-        }
-        .tbody::-webkit-scrollbar {
-            display: none;
-        }
-    </style>
-    
-    <style>
-        /* ... (all previous CSS remains exactly the same) ... */
-        
-        /* Pagination Styles */
-        .pagination {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 1.5rem;
-            gap: 0.3rem;
-            flex-wrap: wrap;
-        }
-        
-        .pagination-btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            text-decoration: none;
-            color: var(--text-light);
-            transition: all 0.3s ease;
-            background: var(--card-bg);
-            cursor: pointer;
-            font-size: 0.9rem;
-            display: inline-block;
-        }
-        
-        .pagination-btn:hover {
-            background: rgba(255, 60, 126, 0.2);
-            border-color: var(--primary);
-            transform: translateY(-1px);
-        }
-        
-        .pagination-btn.active {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border-color: var(--primary);
-        }
-        
-        .pagination-btn.disabled {
-            color: var(--text-muted);
-            cursor: not-allowed;
-            background: rgba(255, 255, 255, 0.05);
-            opacity: 0.6;
-        }
-        
-        .pagination-btn.disabled:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: var(--border-color);
-            transform: none;
-        }
-        
-        .pagination-ellipsis {
-            padding: 0.5rem;
-            color: var(--text-muted);
-        }
-        
-        .pagination-info {
-            text-align: center;
-            margin-top: 0.5rem;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-        
-        .tab-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        
-        .tab-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text-light);
-        }
-        
-        .total-count {
-            background: rgba(255, 60, 126, 0.2);
-            padding: 0.4rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            color: var(--primary);
-            border: 1px solid rgba(255, 60, 126, 0.3);
-        }
-        
-        /* Tab links styling */
-        .tab-link {
-            text-decoration: none;
-            color: inherit;
-            display: block;
-            padding: 1rem 1.5rem;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-            white-space: nowrap;
-        }
-        
-        .tab-link.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-        
-        .tab-link:hover {
-            color: var(--primary);
-        }
-    </style>
-</head>
-<body>
-    <div class="admin-container">
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <h2>RB Games</h2>
-            </div>
-            <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="users.php" class="menu-item active">
-                    <i class="fas fa-users"></i>
-                    <span>Users</span>
-                </a>
-                
-                <a href="todays_active_games.php" class="menu-item">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
-                </a>
-                <a href="game_sessions_history.php" class="menu-item">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
-                </a>
-                <a href="admin_deposits.php" class="menu-item">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
-                </a>
-                <a href="admin_reports.php" class="menu-item">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
-                </a>
-                <a href="admin_profile.php" class="menu-item ">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
-            </div>
-            <div class="sidebar-footer">
-                <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
-                </div>
-            </div>
-        </div>
 
         <!-- Main Content -->
         <div class="main-content">
@@ -1058,6 +409,13 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                     <?= $_SESSION['success_message'] ?>
                 </div>
                 <?php unset($_SESSION['success_message']); ?>
+            <?php endif; ?>
+            
+            <?php if (isset($_SESSION['error_message'])): ?>
+                <div class="alert alert-danger">
+                    <?= $_SESSION['error_message'] ?>
+                </div>
+                <?php unset($_SESSION['error_message']); ?>
             <?php endif; ?>
 
             <!-- Financial Summary -->
@@ -1136,19 +494,28 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                             <label class="form-label">Current Balance</label>
                             <input type="text" class="form-control" value="₹<?= number_format($user['balance'], 2) ?>" readonly>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">New Balance</label>
-                            <input type="number" step="0.01" class="form-control" name="new_balance" value="<?= $user['balance'] ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Reason</label>
-                            <input type="text" class="form-control" name="reason" placeholder="Reason for balance adjustment" required>
-                        </div>
-                        <div class="form-group">
-                            <button type="submit" name="update_balance" class="btn btn-warning">
-                                <i class="fas fa-sync-alt"></i> Update Balance
-                            </button>
-                        </div>
+                        <?php if($referral_code['status'] == 'suspend'):?>
+                            
+                        <?php else:?>
+                                
+                            <div class="form-group">
+                                <label class="form-label">New Balance</label>
+                                <input type="number" step="0.01" class="form-control" name="new_balance" value="<?= $user['balance'] ?>" 
+                                <?php 
+                                if($referral_code['status'] == 'suspend'){ 
+                                    echo 'readonly'; 
+                                }?> required >
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Reason</label>
+                                <input type="text" class="form-control" name="reason" placeholder="Reason for balance adjustment" required>
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" name="update_balance" class="btn btn-warning">
+                                    <i class="fas fa-sync-alt"></i>Request to Update Balance
+                                </button>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </form>
             </div>
@@ -1159,6 +526,9 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                     <h3 class="card-title">User Management</h3>
                 </div>
                 <div class="action-buttons">
+                    <?php if($referral_code['status'] == 'suspend'):?>
+                            
+                    <?php else:?>
                     <form method="POST" style="display: inline;">
                         <select name="status" class="form-control" style="width: auto; display: inline-block; margin-right: 1rem; background-color: var(--dark); color: var(--text-light);">
                             <option value="active" <?= $user['status'] == 'active' ? 'selected' : '' ?>>Active</option>
@@ -1175,6 +545,8 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
                             <i class="fas fa-trash"></i> Delete User
                         </button>
                     </form>
+
+                    <?php endif; ?>
                     
                     <a href="users.php" class="btn btn-secondary">
                         <i class="fas fa-arrow-left"></i> Back to Users
@@ -1430,5 +802,6 @@ function generateTabUrl($tab, $user_id, $active_tab, $bets_page, $deposits_page,
             });
         });
     </script>
+
 </body>
 </html>

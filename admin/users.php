@@ -20,7 +20,7 @@ if (isset($_GET['ajax']) && isset($_GET['view_user'])) {
     
     // Get admin details for the referral code
     $admin_id = $_SESSION['admin_id'];
-    $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
     $stmt->execute([$admin_id]);
     $referral_result = $stmt->get_result();
     $referral_code = $referral_result->fetch_assoc();
@@ -46,7 +46,7 @@ if (isset($_GET['ajax']) && isset($_GET['view_user'])) {
 $admin_id = $_SESSION['admin_id'];
 $admin_username = $_SESSION['admin_username'];
 
-$stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
 $stmt->execute([$admin_id]);
 $referral_code  = $stmt->get_result();
 $referral_code = $referral_code->fetch_assoc();
@@ -101,12 +101,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Handle delete user (with confirmation)
     if (isset($_GET['delete_user'])) {
         $user_id = intval($_GET['delete_user']);
-        if (deleteUser($conn, $user_id)) {
-            $_SESSION['success_message'] = "User deleted successfully!";
-        } else {
-            $_SESSION['error_message'] = "Error deleting user!";
+
+        $stmt = $conn->prepare("SELECT * FROM admin_requests WHERE user_id = ? AND title = 'User Deletion' AND status = 'pending'");
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $pre_result = $stmt->get_result();
+        $result = $pre_result->num_rows;
+        if ($result > 0) {
+            $_SESSION['error_message'] = "A deletion request for this user is already pending.";
+            header("Location: users.php");
+            exit;
         }
-        header("Location: users.php");
+        else{
+            
+
+            if (deleteUser($conn, $user_id)) {
+                $_SESSION['success_message'] = "Request to delete user submitted successfully!";
+                header("Location: users.php");
+            } else {
+                $_SESSION['error_message'] = "Error deleting user!";
+            }
+            header("Location: users.php");
+        }
         exit;
     }
 }
@@ -260,7 +276,7 @@ function displayTransactionsTab($user_transactions, $current_page, $per_page) {
 function getUsers($conn, $search = '', $date_from = '', $date_to = '') {
     // Get admin details
     $admin_id = $_SESSION['admin_id'];
-    $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
     $stmt->execute([$admin_id]);
     $referral_result = $stmt->get_result();
     $referral_code = $referral_result->fetch_assoc();
@@ -309,7 +325,7 @@ function getUsers($conn, $search = '', $date_from = '', $date_to = '') {
 function getUserDetails($conn, $user_id) {
     // Get admin details
     $admin_id = $_SESSION['admin_id'];
-    $stmt = $conn->prepare("SELECT referral_code FROM admins WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
     $stmt->execute([$admin_id]);
     $referral_result = $stmt->get_result();
     $referral_code = $referral_result->fetch_assoc();
@@ -438,903 +454,61 @@ function unbanUser($conn, $user_id) {
 
 // Function to delete user
 function deleteUser($conn, $user_id) {
+
+    $user_id = intval($user_id);
     // Start transaction
     $conn->begin_transaction();
     
     try {
-        // Delete user related data first
-        $tables = ['bets', 'payouts', 'transactions', 'user_sessions'];
-        foreach ($tables as $table) {
-            $sql = "DELETE FROM $table WHERE user_id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param('i', $user_id);
-            $stmt->execute();
-        }
-        
-        // Delete the user
-        $sql = "DELETE FROM users WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param('i', $user_id);
+
+        $stmt = $conn->prepare("SELECT * FROM admin_requests wHERE user_id = ? AND status = 'pending' AND title = 'User Deletion'");
+        $stmt->bind_param("i", $user_id);
         $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows > 0) {
+            $_SESSION['error_message'] = "There is already a pending user deletion request for this user.";
+            header("Location: users.php");
+            exit();
+        }
+
+        $admin_id = isset($_SESSION['admin_id'])? intval($_SESSION['admin_id']) : 0;
+        $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
+        $stmt->bind_param('i', $admin_id);
+        $stmt->execute();
+        $referral_result = $stmt->get_result();
+        $get_admin_name = $referral_result->fetch_assoc();
+        $referral_result->free();   // <-- important
+        $stmt->close();
+
+
+        // Delete user related data first
+        $title = "User Deletion";
+        $description = "User account deleted by admin: " . $get_admin_name['username'];
+        $delete_stmt = $conn->prepare("INSERT INTO `admin_requests`( `admin_id`, `user_id`, `title`, `description`, `status`, `created_at`) VALUES (?,?,?,?,'pending',NOW())");
+        $delete_stmt->bind_param("iiss", $admin_id, $user_id, $title, $description);
+        $delete_stmt->execute();
+        
+       
         
         $conn->commit();
+        $_SESSION['success_message'] = "Request to delete user submitted successfully!";
+        
+        
+        
         return true;
     } catch (Exception $e) {
-        $conn->rollback();
+        
+        try { $conn->rollback(); } catch (Exception $rollbackError) {}
         return false;
     }
 }
+
+$pagefilename = "users";
+
+include "includes/header.php";
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Management - RB Games Admin</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #ff3c7e;
-            --secondary: #0fb4c9;
-            --accent: #00cec9;
-            --dark: #1a1a2e;
-            --darker: #16213e;
-            --success: #00b894;
-            --warning: #fdcb6e;
-            --danger: #d63031;
-            --text-light: #f5f6fa;
-            --text-muted: rgba(255, 255, 255, 0.7);
-            --card-bg: rgba(26, 26, 46, 0.8);
-            --border-color: rgba(255, 60, 126, 0.15);
-        }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
-        }
-
-        body {
-            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
-            color: var(--text-light);
-            min-height: 100vh;
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-
-        .admin-container {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        /* Mobile menu toggle */
-        .menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: var(--text-light);
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0.5rem;
-            z-index: 1001;
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            background: var(--card-bg);
-            border-radius: 6px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Overlay for mobile */
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 999;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: 260px;
-            background: var(--dark);
-            box-shadow: 3px 0 15px rgba(0, 0, 0, 0.3);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            height: 100vh;
-            transition: all 0.3s ease;
-            left: -260px;
-            top: 0;
-            overflow-x: scroll;
-        }
-        .sidebar::-webkit-scrollbar{
-            display:none;
-        }
-
-        .sidebar.active {
-            left: 0;
-        }
-
-        .sidebar-header {
-            padding: 1.8rem 1.5rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            text-align: center;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .sidebar-header h2 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-
-        .sidebar-menu {
-            padding: 1.5rem 0;
-            flex-grow: 1;
-        }
-
-        .menu-item {
-            padding: 1rem 1.8rem;
-            display: flex;
-            align-items: center;
-            color: var(--text-light);
-            text-decoration: none;
-            transition: all 0.3s ease;
-            margin: 0.3rem 0.8rem;
-            border-radius: 8px;
-        }
-
-        .menu-item:hover, .menu-item.active {
-            background: linear-gradient(to right, rgba(255, 60, 126, 0.2), rgba(11, 180, 201, 0.2));
-            border-left: 4px solid var(--primary);
-            transform: translateX(5px);
-        }
-
-        .menu-item i {
-            margin-right: 12px;
-            font-size: 1.3rem;
-            width: 24px;
-            text-align: center;
-        }
-
-        .sidebar-footer {
-            padding: 1.2rem;
-            border-top: 1px solid var(--border-color);
-            text-align: center;
-            background: rgba(0, 0, 0, 0.2);
-        }
-
-        /* Main Content Styles */
-        .main-content {
-            flex: 1;
-            padding: 2.2rem;
-            width: 100%;
-            overflow-y: auto;
-            transition: all 0.3s ease;
-            min-height: 100vh;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2.2rem;
-            padding-bottom: 1.2rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .welcome h1 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 700;
-        }
-
-        .welcome p {
-            color: var(--text-muted);
-            font-size: 1rem;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 1.2rem;
-        }
-
-        .admin-badge {
-            background: rgba(255, 60, 126, 0.2);
-            padding: 0.6rem 1.2rem;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            font-weight: 500;
-            border: 1px solid rgba(255, 60, 126, 0.3);
-        }
-
-        .admin-badge i {
-            color: var(--primary);
-        }
-
-        .logout-btn {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            padding: 0.6rem 1.6rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            box-shadow: 0 4px 10px rgba(255, 60, 126, 0.3);
-            text-decoration: none;
-        }
-
-        .logout-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(255, 60, 126, 0.4);
-        }
-
-        /* Filter Section */
-        .filter-section {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 1.8rem;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border-color);
-            margin-bottom: 2.2rem;
-        }
-
-        .filter-form {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.2rem;
-            align-items: end;
-        }
-
-        .form-group {
-            margin-bottom: 0;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: var(--text-light);
-            font-weight: 500;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            color: var(--text-light);
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(255, 60, 126, 0.2);
-        }
-
-        .btn {
-            padding: 0.8rem 1.5rem;
-            border: none;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .btn-primary {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 60, 126, 0.3);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text-light);
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .btn-sm {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.85rem;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning);
-            color: var(--dark);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        /* Tables */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .data-table th, .data-table td {
-            padding: 1.2rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .data-table th {
-            color: var(--text-muted);
-            font-weight: 600;
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .data-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .data-table tr:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .status {
-            padding: 0.4rem 1rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            display: inline-block;
-        }
-
-        .status-active {
-            background: rgba(0, 184, 148, 0.2);
-            color: var(--success);
-            border: 1px solid rgba(0, 184, 148, 0.3);
-        }
-
-        .status-suspended {
-            background: rgba(253, 203, 110, 0.2);
-            color: var(--warning);
-            border: 1px solid rgba(253, 203, 110, 0.3);
-        }
-
-        .status-banned {
-            background: rgba(214, 48, 49, 0.2);
-            color: var(--danger);
-            border: 1px solid rgba(214, 48, 49, 0.3);
-        }
-
-        /* Action buttons */
-        .action-buttons {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        /* Modal styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .modal-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 2rem;
-            max-width: 90%;
-            width: 1200px;
-            max-height: 90vh;
-            overflow-y: auto;
-            border: 1px solid var(--border-color);
-            transform: translateY(-20px);
-            transition: transform 0.3s ease;
-        }
-
-        .modal-overlay.active .modal-content {
-            transform: translateY(0);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0;
-        }
-
-        .user-info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .info-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 1.2rem;
-            border: 1px solid var(--border-color);
-        }
-
-        .info-label {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-
-        .info-value {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            margin-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .tab {
-            padding: 1rem 1.5rem;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-        }
-
-        .tab.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* Confirmation modal */
-        .confirmation-modal .modal-content {
-            max-width: 500px;
-        }
-
-        .confirmation-buttons {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-            margin-top: 1.5rem;
-        }
-
-        .tbody{
-            position:relative;
-            overflow-x:scroll;
-        }
-        .tbody::-webkit-scrollbar{
-            display: none;
-        }
-
-        /* ========== RESPONSIVE DESIGN ========== */
-        
-        /* Large screens (993px and above) */
-        @media (min-width: 993px) {
-            .sidebar {
-                width: 260px;
-                left: 0;
-                position: fixed;
-            }
-            .main-content {
-                margin-left: 260px;
-                width: calc(100% - 260px);
-            }
-            .menu-toggle {
-                display: none;
-            }
-            .sidebar-overlay {
-                display: none !important;
-            }
-        }
-
-        /* Medium screens (769px - 992px) */
-        @media (max-width: 992px) and (min-width: 769px) {
-            .sidebar {
-                width: 80px;
-                left: 0;
-            }
-            .main-content {
-                margin-left: 80px;
-                width: calc(100% - 80px);
-                padding: 1.5rem;
-            }
-            .menu-toggle {
-                display: none;
-            }
-            .sidebar-header h2 {
-                font-size: 1.2rem;
-            }
-            .menu-item span {
-                display: none;
-            }
-            .menu-item {
-                justify-content: center;
-                padding: 1rem;
-            }
-            .menu-item i {
-                margin-right: 0;
-            }
-        }
-
-        /* Small screens (768px and below) */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 260px;
-                left: -260px;
-            }
-            .sidebar.active {
-                left: 0;
-            }
-            .main-content {
-                margin-left: 0;
-                width: 100%;
-                padding: 1rem;
-            }
-            .menu-toggle {
-                display: block;
-            }
-            .header {
-                margin-top: 4rem;
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-            .header-actions {
-                flex-direction: column;
-                width: 100%;
-                gap: 0.8rem;
-            }
-            .admin-badge, .logout-btn {
-                width: 100%;
-                justify-content: center;
-            }
-        }
-
-        /* Extra small devices (576px and below) */
-        @media (max-width: 576px) {
-            .main-content {
-                padding: 1rem 0.8rem;
-            }
-            .welcome h1 {
-                font-size: 1.5rem;
-            }
-            .welcome p {
-                font-size: 0.9rem;
-            }
-            .filter-section {
-                padding: 1rem;
-            }
-            .filter-form {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
-            .data-table {
-                font-size: 0.85rem;
-            }
-            .data-table th, .data-table td {
-                padding: 0.8rem 0.5rem;
-            }
-            .action-buttons {
-                flex-direction: column;
-                gap: 0.3rem;
-            }
-            .btn-sm {
-                padding: 0.4rem 0.6rem;
-                font-size: 0.8rem;
-            }
-        }
-
-        /* Ultra small devices (400px and below) */
-        @media (max-width: 400px) {
-            .main-content {
-                padding: 0.8rem 0.5rem;
-            }
-            .header {
-                margin-top: 3.5rem;
-                gap: 0.8rem;
-            }
-            .welcome h1 {
-                font-size: 1.3rem;
-            }
-            .welcome p {
-                font-size: 0.85rem;
-            }
-            .filter-section {
-                padding: 0.8rem;
-            }
-            .form-control {
-                padding: 0.7rem 0.8rem;
-                font-size: 0.9rem;
-            }
-            .btn {
-                padding: 0.7rem 1rem;
-                font-size: 0.9rem;
-            }
-            .data-table {
-                font-size: 0.8rem;
-            }
-            .data-table th, .data-table td {
-                padding: 0.6rem 0.4rem;
-            }
-            .status {
-                font-size: 0.75rem;
-                padding: 0.3rem 0.6rem;
-            }
-            .action-buttons .btn-sm {
-                padding: 0.3rem 0.5rem;
-                font-size: 0.75rem;
-            }
-            .modal-content {
-                padding: 1rem;
-                width: 95%;
-            }
-            .user-info-grid {
-                grid-template-columns: 1fr;
-                gap: 0.8rem;
-            }
-            .info-card {
-                padding: 0.8rem;
-            }
-            .tabs {
-                flex-direction: column;
-            }
-            .tab {
-                padding: 0.8rem;
-                text-align: center;
-            }
-            .confirmation-buttons {
-                flex-direction: column;
-            }
-            .confirmation-buttons .btn {
-                width: 100%;
-            }
-            .menu-toggle {
-                top: 0.8rem;
-                left: 0.8rem;
-                padding: 0.4rem;
-                font-size: 1.3rem;
-            }
-        }
-
-        /* Utility classes */
-        .text-center {
-            text-align: center;
-        }
-
-        .text-right {
-            text-align: right;
-        }
-
-        .mt-1 { margin-top: 0.5rem; }
-        .mt-2 { margin-top: 1rem; }
-        .mt-3 { margin-top: 1.5rem; }
-        .mb-1 { margin-bottom: 0.5rem; }
-        .mb-2 { margin-bottom: 1rem; }
-        .mb-3 { margin-bottom: 1.5rem; }
-        .p-1 { padding: 0.5rem; }
-        .p-2 { padding: 1rem; }
-        .p-3 { padding: 1.5rem; }
-
-        /* Loading animation */
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--primary);
-            animation: spin 1s ease-in-out infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
-    <style>
-        /* ... (all existing CSS remains the same) ... */
-        
-         /* Pagination Styles */
-        .pagination {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 1.5rem;
-            gap: 0.5rem;
-        }
-        
-        .pagination a, .pagination span, .pagination button {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            text-decoration: none;
-            color: var(--text-light);
-            transition: all 0.3s ease;
-            background: var(--card-bg);
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-        
-        .pagination a:hover, .pagination button:hover {
-            background: rgba(255, 60, 126, 0.2);
-            border-color: var(--primary);
-        }
-        
-        .pagination .current {
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            color: white;
-            border-color: var(--primary);
-        }
-        
-        .pagination .disabled {
-            color: var(--text-muted);
-            cursor: not-allowed;
-            background: rgba(255, 255, 255, 0.05);
-        }
-        
-        .pagination .disabled:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: var(--border-color);
-        }
-        
-        .pagination-info {
-            text-align: center;
-            margin-top: 0.5rem;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-        
-        .loading-pagination {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--primary);
-            animation: spin 1s ease-in-out infinite;
-            margin-right: 0.5rem;
-        }
-    </style>
-</head>
-<body>
-    <div class="admin-container">
-        <!-- Mobile Menu Toggle -->
-        <button class="menu-toggle" id="menuToggle">
-            <i class="fas fa-bars"></i>
-        </button>
-
-        <!-- Overlay for mobile -->
-        <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-        <!-- Sidebar -->
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>RB Games</h2>
-            </div>
-            <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="users.php" class="menu-item active">
-                    <i class="fas fa-users"></i>
-                    <span>Users</span>
-                </a>
-                
-                
-                <a href="todays_active_games.php" class="menu-item ">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
-                </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item ">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
-                </a>
-                <a href="admin_deposits.php" class="menu-item ">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
-                </a>
-                
-                <a href="admin_reports.php" class="menu-item">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
-                </a>
-                <a href="admin_profile.php" class="menu-item ">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
-            </div>
-            <div class="sidebar-footer">
-                <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
-                </div>
-            </div>
-        </div>
 
         <!-- Main Content -->
         <div class="main-content" id="mainContent">
@@ -1421,18 +595,23 @@ function deleteUser($conn, $user_id) {
                                             <button class="btn btn-primary btn-sm view-user" data-user-id="<?php echo $user['id']; ?>" onclick="window.location.href = 'viewuser.php?id=<?= $user['id'] ?>'">
                                                 <i class="fas fa-eye"></i> View
                                             </button>
-                                            <?php if ($user['status'] === 'active'): ?>
-                                                <a href="users.php?ban_user=<?php echo $user['id']; ?>" class="btn btn-warning btn-sm">
-                                                    <i class="fas fa-ban"></i> Ban
-                                                </a>
-                                            <?php else: ?>
-                                                <a href="users.php?unban_user=<?php echo $user['id']; ?>" class="btn btn-success btn-sm">
-                                                    <i class="fas fa-check"></i> Unban
-                                                </a>
+
+                                            <?php if($referral_code['status'] == 'suspend'):?>
+                            
+                                            <?php else:?>
+                                                <?php if ($user['status'] === 'active'): ?>
+                                                    <a href="users.php?ban_user=<?php echo $user['id']; ?>" class="btn btn-warning btn-sm">
+                                                        <i class="fas fa-ban"></i> Ban
+                                                    </a>
+                                                <?php else: ?>
+                                                    <a href="users.php?unban_user=<?php echo $user['id']; ?>" class="btn btn-success btn-sm">
+                                                        <i class="fas fa-check"></i> Unban
+                                                    </a>
+                                                <?php endif; ?>
+                                                <button class="btn btn-danger btn-sm delete-user" data-user-id="<?php echo $user['id']; ?>" data-username="<?php echo htmlspecialchars($user['username']); ?>">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
                                             <?php endif; ?>
-                                            <button class="btn btn-danger btn-sm delete-user" data-user-id="<?php echo $user['id']; ?>" data-username="<?php echo htmlspecialchars($user['username']); ?>">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1550,6 +729,9 @@ function deleteUser($conn, $user_id) {
             </div>
         </div>
     </div>
+
+<!-- SweetAlert2 latest from jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 
 <script>
@@ -1757,18 +939,26 @@ function deleteUser($conn, $user_id) {
 
     <?php if (isset($_SESSION['success_message'])): ?>
         setTimeout(() => {
-            alert('<?php echo $_SESSION['success_message']; ?>');
+            Swal.fire({'title': "Success"  ,
+                'text':'<?php echo $_SESSION['success_message']; ?>',
+                'icon':'success',
+                'confirmButtonText':'OK'});
         }, 100);
         <?php unset($_SESSION['success_message']); ?>
     <?php endif; ?>
     
     <?php if (isset($_SESSION['error_message'])): ?>
         setTimeout(() => {
-            alert('Error: <?php echo $_SESSION['error_message']; ?>');
+            Swal.fire({'title': "Error"  ,
+                'text':'<?php echo $_SESSION['error_message']; ?>',
+                'icon':'error',
+                'confirmButtonText':'OK'});
         }, 100);
         <?php unset($_SESSION['error_message']); ?>
     <?php endif; ?>
 </script>
+
+
 </body>
 </html>
 
