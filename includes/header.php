@@ -1373,7 +1373,7 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
             margin: 1.5rem 0;
         }
 
-        /* Profile Modal Styles */
+ /* Profile Modal Styles */
         .profile-modal {
             display: none;
             position: fixed;
@@ -1413,7 +1413,9 @@ $success_message = $deposit_success_message ?: $withdraw_success_message;
             font-size: 1.8rem;
             margin-bottom: 0.5rem;
         }
-
+            .profile-modal p{
+                color:black;
+            }
         .profile-modal-body {
             padding: 2rem;
             max-height: calc(90vh - 120px);
