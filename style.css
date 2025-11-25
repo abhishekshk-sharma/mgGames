@@ -6,23 +6,23 @@
             font-family: 'Poppins', sans-serif;
         }
 
-         :root {
-            --primary: rgb(247, 164, 40);
+     :root {
+            --primary: #ddaa11ff;
             --secondary: #0fb4c9ff;
             --accent: #c0c0c0;
-               --dark: #d8d5d5ff;
-            --light: #fff8dc;
+             --dark: #f6f1f1ff;
+            --light: rgb(253, 253, 245);
             --success: #32cd32;
             --warning: #ffbf00ff;
             --danger: #ff4500;
-            --card-bg: rgba(67, 115, 237, 0.123);
+            --card-bg: rgba(49, 49, 49, 0.95);
             --header-bg: rgba(255, 255, 255, 0.98);
             --gradient-primary: linear-gradient(135deg, #b09707ff 0%, #ffed4e 100%);
             --gradient-secondary: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
             --gradient-accent: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
-            --gradient-dark: linear-gradient(135deg, #e4d69bff 0%, rgb(247, 244, 178) 100%);
+            --gradient-dark: linear-gradient(135deg, #2e2e2dff 0%, rgba(33, 33, 33, 1) 100%);
             --gradient-premium: linear-gradient(135deg, #ffd700 0%,rgba(16, 16, 15, 1)100%);
-            --card-shadow: 0 12px 40px rgba(255, 215, 0, 0.15);
+            --card-shadow: 0 12px 40px rgba(242, 241, 235, 0.18);
             --glow-effect: 0 0 25px rgba(255, 215, 0, 0.3);
             --glow-blue: 0 0 25px rgba(0, 0, 0, 0.3);
             --border-radius: 16px;
@@ -69,7 +69,7 @@
 .game-info-header {
       max-width: 1400px;
         margin: 0 auto;
-    background: rgba(41, 40, 40, 0.98);
+    background: rgba(9, 9, 9, 0.98);
     border-radius: 20px;
     padding: 2.5rem;
     margin-bottom: 3rem;
@@ -86,7 +86,7 @@
     left: 0;
     width: 100%;
     height: 5px;
-    background: linear-gradient(135deg, #284f4b 0%, #FF8FA3 100%);
+    background: linear-gradient(135deg, #284f4b 0%, #eac407 100%);
     border-radius: 20px 20px 0 0;
 }
 
@@ -243,11 +243,12 @@
     text-shadow: 0 0 15px rgba(255, 107, 139, 0.5);
     letter-spacing: 2px;
 }
+
 /* Enhanced Betting Section */
 .betting-container {
     max-width: 1400px;
     margin: 0 auto;
-    background: rgba(41, 40, 40, 0.98);
+    background: rgba(10, 7, 7, 0.98);
     border-radius: 20px;
     padding: 3rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -263,7 +264,7 @@
     left: 0;
     width: 100%;
     height: 6px;
-    background: linear-gradient(135deg, #284f4b 0%, #FF8FA3 100%);
+    background: linear-gradient(135deg, #284f4b 0%, #ecaf09 100%);
     border-radius: 20px 20px 0 0;
 }
 
@@ -424,17 +425,15 @@ select:focus {
 }
 
 .toggle-option.active {
-    background: linear-gradient(135deg, #284f4b 0%, #13d1ca 100%);
     border-color: #13d1ca;
     color: #FFFFFF;
-    box-shadow: 0 6px 25px rgba(19, 209, 202, 0.4), 0 0 25px rgba(19, 209, 202, 0.3);
     transform: scale(1.05);
 }
 
 .toggle-option:hover:not(.active) {
-    background: rgba(19, 209, 202, 0.15);
-    color: #13d1ca;
-    border-color: rgba(19, 209, 202, 0.5);
+    background: rgba(75, 75, 75, 0.15);
+    color:  rgba(75, 75, 75, 0.15);
+    border-color:  rgba(75, 75, 75, 0.15);
 }
 
 /* Enhanced Betting Grid */
@@ -562,7 +561,6 @@ select:focus {
     color: #FFFFFF;
     padding: 1.5rem 3rem;
     font-size: 1.3rem;
-    box-shadow: 0 10px 30px rgba(19, 209, 202, 0.5), 0 0 25px rgba(19, 209, 202, 0.3);
     border: 3px solid rgba(255, 255, 255, 0.4);
 }
 

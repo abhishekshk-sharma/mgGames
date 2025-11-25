@@ -34,6 +34,7 @@ $sql = "SELECT ar.*, a.username as admin_username, u.username as user_username
         FROM admin_requests ar 
         LEFT JOIN admins a ON ar.admin_id = a.id 
         LEFT JOIN users u ON ar.user_id = u.id 
+        WHERE a.id = $admin_id
         ORDER BY ar.created_at DESC 
         LIMIT $limit OFFSET $offset";
 $result = $conn->query($sql);
@@ -104,80 +105,11 @@ if ($filter_status || $filter_username) {
     }
 }
 
+$pagefilename = "applications";
+
 include "includes/header.php";
 ?>
-<body>
 
-    <!-- Mobile Menu Toggle -->
-    <button class="menu-toggle" id="menuToggle">
-        <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- Overlay for mobile -->
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-    <div class="admin-container">
-        <!-- Sidebar -->
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>RB Games</h2>
-            </div>
-            <div class="sidebar-menu">
-                <a href="dashboard.php" class="menu-item">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="users.php" class="menu-item">
-                    <i class="fas fa-users"></i>
-                    <span>Users</span>
-                </a>
-                
-
-                <a href="todays_active_games.php" class="menu-item ">
-                    <i class="fas fa-play-circle"></i>
-                    <span>Today's Games</span>
-                </a>
-                <a href="game_sessions_history.php" class="menu-item ">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Game Sessions History</span>
-                </a>
-                <a href="all_users_history.php" class="menu-item ">
-                    <i class="fas fa-history"></i>
-                    <span>All Users Bet History</span>
-                </a>
-                <a href="admin_transactions.php" class="menu-item">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="admin_withdrawals.php" class="menu-item">
-                    <i class="fas fa-credit-card"></i>
-                    <span>Withdrawals</span>
-                </a>
-                <a href="admin_deposits.php" class="menu-item ">
-                    <i class="fas fa-money-bill"></i>
-                    <span>Deposits</span>
-                </a>
-
-                <a href="applications.php" class="menu-item active">
-                    <i class="fas fa-tasks"></i>
-                    <span>Applications</span>
-                </a>
-                
-                <a href="admin_reports.php" class="menu-item">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Reports</span>
-                </a>
-                <a href="admin_profile.php" class="menu-item ">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
-            </div>
-            <div class="sidebar-footer">
-                <div class="admin-info">
-                    <p>Logged in as <strong><?php echo $admin_username; ?></strong></p>
-                </div>
-            </div>
-        </div>
 
         <!-- Main Content -->
         <div class="main-content">
