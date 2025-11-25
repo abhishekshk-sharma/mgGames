@@ -1543,11 +1543,8 @@ function calculatePotentialWin($game_type_id, $amount, $bet_data) {
 }
 
 include 'includes/header.php';          
-
 ?>
-<style>
-    
-</style>
+
 
 <link rel="stylesheet" href="style.css">
 
@@ -2367,7 +2364,6 @@ include 'includes/header.php';
     </form>
 </div>
 
-
 <!-- Rown Game Interface -->
 <div class="rown-interface" style="<?php echo $game_type === 'rown' ? 'display: block;' : 'display: none;'; ?>">
     <div class="rown-container">
@@ -2521,6 +2517,7 @@ include 'includes/header.php';
             </button>
         </form>
     </div>
+    
 </div>
 <!-- Eki Game Interface -->
 <div class="eki-interface" style="<?php echo $game_type === 'eki' ? 'display: block;' : 'display: none;'; ?>">

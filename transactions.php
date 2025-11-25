@@ -139,23 +139,23 @@ include 'includes/header.php';
             box-sizing: border-box;
             font-family: 'Poppins', sans-serif;
         }
-   :root {
-            --primary: rgba(243, 204, 46, 0.85);
+ :root {
+            --primary: #ddaa11ff;
             --secondary: #0fb4c9ff;
             --accent: #c0c0c0;
-            --dark: #faf6f6ff;
-            --light: #f7f7f4ff;
-            --success: #58de58ff;
-            --warning: rgba(251, 177, 5, 1);
-            --danger: #ff2200ff;
-            --card-bg: rgba(43, 43, 43, 0.95);
+             --dark: #f6f1f1ff;
+            --light: #f4f4f1ff;
+            --success: #32cd32;
+            --warning: #ffbf00ff;
+            --danger: #ff4500;
+            --card-bg: rgba(8, 8, 8, 0.95);
             --header-bg: rgba(255, 255, 255, 0.98);
             --gradient-primary: linear-gradient(135deg, #b09707ff 0%, #ffed4e 100%);
             --gradient-secondary: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
             --gradient-accent: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
-            --gradient-dark: linear-gradient(135deg, #e4d69bff 0%, rgba(13, 13, 13, 1) 100%);
+            --gradient-dark: linear-gradient(135deg, #2e2e2dff 0%, rgba(33, 33, 33, 1) 100%);
             --gradient-premium: linear-gradient(135deg, #ffd700 0%,rgba(16, 16, 15, 1)100%);
-            --card-shadow: 0 12px 40px rgba(255, 215, 0, 0.15);
+            --card-shadow: 0 12px 40px rgba(242, 241, 235, 0.18);
             --glow-effect: 0 0 25px rgba(255, 215, 0, 0.3);
             --glow-blue: 0 0 25px rgba(0, 0, 0, 0.3);
             --border-radius: 16px;
@@ -188,7 +188,7 @@ include 'includes/header.php';
             text-align: center;
             position: relative;
             padding-bottom: 10px;
-            color: #201f1fff;;
+            color: #fbf7f7ff;;
         }
 
         .section-title::after {
@@ -875,11 +875,74 @@ include 'includes/header.php';
                 </div>
            
             </div>
+            <!-- Pagination -->
+ <?php if ($total_pages > 1): ?>
+            <div class="pagination-container">
+                <ul class="pagination" id="pagination">
+                    <!-- Previous Page -->
+                    <li class="page-item <?php echo $current_page <= 1 ? 'disabled' : ''; ?>">
+                        <a class="page-link" href="?page=<?php echo $current_page - 1; ?>" aria-label="Previous">
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                    </li>
 
+                    <!-- Page Numbers -->
+                    <?php
+                    // Show first page
+                    if ($current_page > 3): ?>
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1">1</a>
+                    </li>
+                    <?php if ($current_page > 4): ?>
+                    <li class="page-item disabled">
+                        <span class="pagination-ellipsis">...</span>
+                    </li>
+                    <?php endif; ?>
+                    <?php endif; ?>
+
+                    <!-- Page range around current page -->
+                    <?php for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++): ?>
+                    <li class="page-item <?php echo $i == $current_page ? 'active' : ''; ?>">
+                        <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                    </li>
+                    <?php endfor; ?>
+
+                    <!-- Show last page -->
+                    <?php if ($current_page < $total_pages - 2): ?>
+                    <?php if ($current_page < $total_pages - 3): ?>
+                    <li class="page-item disabled">
+                        <span class="pagination-ellipsis">...</span>
+                    </li>
+                    <?php endif; ?>
+                    <li class="page-item">
+                        <a class="page-link" href="?page=<?php echo $total_pages; ?>"><?php echo $total_pages; ?></a>
+                    </li>
+                    <?php endif; ?>
+
+                    <!-- Next Page -->
+                    <li class="page-item <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?>">
+                        <a class="page-link" href="?page=<?php echo $current_page + 1; ?>" aria-label="Next">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="page-size-selector">
+                    <span class="page-size-label">Show:</span>
+                    <select class="page-size-select" id="pageSizeSelect">
+                        <option value="5" <?php echo $transactions_per_page == 5 ? 'selected' : ''; ?>>5</option>
+                        <option value="10" <?php echo $transactions_per_page == 10 ? 'selected' : ''; ?>>10</option>
+                        <option value="20" <?php echo $transactions_per_page == 20 ? 'selected' : ''; ?>>20</option>
+                        <option value="50" <?php echo $transactions_per_page == 50 ? 'selected' : ''; ?>>50</option>
+                    </select>
+                </div>
+            </div>
+ <?php endif; ?>
             <!-- Pagination Info -->
             <div class="pagination-info" id="paginationInfo">
                 Showing <?php echo count($transactions); ?> of <?php echo $total_transactions; ?> transactions
             </div>
+            
 
          <!-- Transactions Grid -->
 <div class="transactions-grid" id="transactionsGrid">
@@ -945,69 +1008,7 @@ include 'includes/header.php';
     <?php endif; ?>
 </div>
 
-            <!-- Pagination -->
-            <?php if ($total_pages > 1): ?>
-            <div class="pagination-container">
-                <ul class="pagination" id="pagination">
-                    <!-- Previous Page -->
-                    <li class="page-item <?php echo $current_page <= 1 ? 'disabled' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $current_page - 1; ?>" aria-label="Previous">
-                            <i class="fas fa-chevron-left"></i>
-                        </a>
-                    </li>
 
-                    <!-- Page Numbers -->
-                    <?php
-                    // Show first page
-                    if ($current_page > 3): ?>
-                    <li class="page-item">
-                        <a class="page-link" href="?page=1">1</a>
-                    </li>
-                    <?php if ($current_page > 4): ?>
-                    <li class="page-item disabled">
-                        <span class="pagination-ellipsis">...</span>
-                    </li>
-                    <?php endif; ?>
-                    <?php endif; ?>
-
-                    <!-- Page range around current page -->
-                    <?php for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++): ?>
-                    <li class="page-item <?php echo $i == $current_page ? 'active' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
-                    </li>
-                    <?php endfor; ?>
-
-                    <!-- Show last page -->
-                    <?php if ($current_page < $total_pages - 2): ?>
-                    <?php if ($current_page < $total_pages - 3): ?>
-                    <li class="page-item disabled">
-                        <span class="pagination-ellipsis">...</span>
-                    </li>
-                    <?php endif; ?>
-                    <li class="page-item">
-                        <a class="page-link" href="?page=<?php echo $total_pages; ?>"><?php echo $total_pages; ?></a>
-                    </li>
-                    <?php endif; ?>
-
-                    <!-- Next Page -->
-                    <li class="page-item <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $current_page + 1; ?>" aria-label="Next">
-                            <i class="fas fa-chevron-right"></i>
-                        </a>
-                    </li>
-                </ul>
-
-                <div class="page-size-selector">
-                    <span class="page-size-label">Show:</span>
-                    <select class="page-size-select" id="pageSizeSelect">
-                        <option value="5" <?php echo $transactions_per_page == 5 ? 'selected' : ''; ?>>5</option>
-                        <option value="10" <?php echo $transactions_per_page == 10 ? 'selected' : ''; ?>>10</option>
-                        <option value="20" <?php echo $transactions_per_page == 20 ? 'selected' : ''; ?>>20</option>
-                        <option value="50" <?php echo $transactions_per_page == 50 ? 'selected' : ''; ?>>50</option>
-                    </select>
-                </div>
-            </div>
-            <?php endif; ?>
         </section>
     </main>
 

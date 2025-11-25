@@ -50,7 +50,7 @@ include 'includes/header.php';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
+<style>
         * {
             margin: 0;
             padding: 0;
@@ -58,21 +58,21 @@ include 'includes/header.php';
             font-family: 'Poppins', sans-serif;
         }
 
-          :root {
-            --primary: rgba(243, 204, 46, 0.85);
+    :root {
+            --primary: #ddaa11ff;
             --secondary: #0fb4c9ff;
             --accent: #c0c0c0;
-            --dark: #d8d5d5ff;
-            --light: #f8f7f4ff;
-            --success: #46e946ff;
-            --warning: rgba(250, 120, 6, 1);
-            --danger: #ff2200ff;
-    --card-bg: rgba(43, 43, 43, 0.95);
-                --header-bg: rgba(255, 255, 255, 0.98);
+             --dark: #f4f0f0ff;
+            --light: #fff8dc;
+            --success: #32cd32;
+            --warning: #ffbf00ff;
+            --danger: #ff4500;
+            --card-bg: rgba(8, 8, 8, 0.95);
+            --header-bg: rgba(255, 255, 255, 0.98);
             --gradient-primary: linear-gradient(135deg, #b09707ff 0%, #ffed4e 100%);
             --gradient-secondary: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
             --gradient-accent: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
-            --gradient-dark: linear-gradient(135deg, #e4d69bff 0%, rgba(13, 13, 13, 1) 100%);
+            --gradient-dark: linear-gradient(135deg, #2e2e2dff 0%, rgba(33, 33, 33, 1) 100%);
             --gradient-premium: linear-gradient(135deg, #ffd700 0%,rgba(16, 16, 15, 1)100%);
             --card-shadow: 0 12px 40px rgba(255, 215, 0, 0.15);
             --glow-effect: 0 0 25px rgba(255, 215, 0, 0.3);
@@ -119,21 +119,19 @@ include 'includes/header.php';
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .payout-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 2rem;
-            background: var(--card-bg);
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
+    .payout-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    table-layout: auto;
+}
 
-        .payout-table th, .payout-table td {
-            padding: 1rem;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
+.payout-table th, .payout-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    word-wrap: break-word;
+}
 
         .payout-table th {
             background: rgba(255, 60, 126, 0.2);
@@ -184,33 +182,222 @@ include 'includes/header.php';
             margin-top: 5px;
         }
 
-        @media (max-width: 768px) {
-            .payout-table {
-                display: block;
-                overflow-x: auto;
-            }
-            
-            .section-title {
-                font-size: 1.5rem;
-            }
-        }
-    </style>
-</head>
+   /* Mobile Responsive Styles */
+@media (max-width: 768px) {
+    .payout-table-container {
+        overflow-x: visible;
+        width: 100%;
+    }
+    
+    .payout-table {
+        width: 100%;
+        min-width: 100%;
+        display: table;
+        table-layout: fixed;
+    }
+    
+    .payout-table thead th {
+        font-size: 0.75rem;
+        padding: 0.6rem 0.3rem;
+        word-break: break-word;
+    }
+    
+    .payout-table td {
+        font-size: 0.75rem;
+        padding: 0.6rem 0.3rem;
+        word-break: break-word;
+        line-height: 1.3;
+    }
+    
+    /* Column width distribution */
+    .payout-table th:nth-child(1),
+    .payout-table td:nth-child(1) {
+        width: 25%;
+    }
+    
+    .payout-table th:nth-child(2),
+    .payout-table td:nth-child(2) {
+        width: 30%;
+    }
+    
+    .payout-table th:nth-child(3),
+    .payout-table td:nth-child(3) {
+        width: 15%;
+    }
+    
+    .payout-table th:nth-child(4),
+    .payout-table td:nth-child(4) {
+        width: 30%;
+    }
+    
+    .game-type {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+    }
+    
+    .game-icon {
+        font-size: 0.9rem;
+        width: 22px;
+        height: 22px;
+    }
+    
+    .game-code {
+        font-size: 0.65rem;
+    }
+    
+    .payout-value {
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+    
+    .section-title {
+        font-size: 1.4rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .chart-container {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    main {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .payout-table thead th {
+        font-size: 0.7rem;
+        padding: 0.5rem 0.2rem;
+    }
+    
+    .payout-table td {
+        font-size: 0.7rem;
+        padding: 0.5rem 0.2rem;
+    }
+    
+    /* Adjust column widths for very small screens */
+    .payout-table th:nth-child(1),
+    .payout-table td:nth-child(1) {
+        width: 28%;
+    }
+    
+    .payout-table th:nth-child(2),
+    .payout-table td:nth-child(2) {
+        width: 27%;
+    }
+    
+    .payout-table th:nth-child(3),
+    .payout-table td:nth-child(3) {
+        width: 15%;
+    }
+    
+    .payout-table th:nth-child(4),
+    .payout-table td:nth-child(4) {
+        width: 30%;
+    }
+    
+    .game-type {
+        gap: 2px;
+    }
+    
+    .game-icon {
+        font-size: 0.8rem;
+        width: 20px;
+        height: 20px;
+    }
+    
+    .game-code {
+        font-size: 0.6rem;
+    }
+    
+    .section-title {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .section-title::after {
+        width: 60px;
+        height: 2px;
+    }
+}
+
+@media (max-width: 360px) {
+    .payout-table thead th {
+        font-size: 0.65rem;
+        padding: 0.4rem 0.1rem;
+    }
+    
+    .payout-table td {
+        font-size: 0.65rem;
+        padding: 0.4rem 0.1rem;
+    }
+    
+    .payout-table th:nth-child(1),
+    .payout-table td:nth-child(1) {
+        width: 30%;
+    }
+    
+    .payout-table th:nth-child(2),
+    .payout-table td:nth-child(2) {
+        width: 25%;
+    }
+    
+    .payout-table th:nth-child(3),
+    .payout-table td:nth-child(3) {
+        width: 15%;
+    }
+    
+    .payout-table th:nth-child(4),
+    .payout-table td:nth-child(4) {
+        width: 30%;
+    }
+    
+    .game-icon {
+        display: none; /* Hide icons on very small screens */
+    }
+}
+
+/* Ensure table fits perfectly on all mobile screens */
+@media (max-width: 768px) {
+    body {
+        overflow-x: hidden;
+    }
+    
+    main {
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+    
+    .payout-table-container {
+        max-width: 100vw;
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+</style>
+ </head>
 <body>
 
     <!-- Main Content -->
-    <main>
-        <h2 class="section-title">Game Payout Chart</h2>
-        <!-- Detailed Payout Table -->
+   <main>
+        <h2 class="section-title">Game Payouts</h2>
+        
         <div class="chart-container">
-            <h3>Detailed Payout Information</h3>
+            <h3>Payout Statistics</h3>
+            <!-- Chart content would go here -->
+        </div>
+
+        <div class="payout-table-container">
             <table class="payout-table">
                 <thead>
                     <tr>
                         <th>Game Type</th>
                         <th>Description</th>
-                        <th>Payout Rate</th>
-                        <th>Win Example</th>
+                        <th>Payout Ratio</th>
+                        <th>Example</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -222,7 +409,6 @@ include 'includes/header.php';
                             $payout_ratio = floatval($game_type['payout_ratio']);
                             $bet_amount = 10; // Example bet amount
                             $win_amount = $bet_amount * $payout_ratio;
-                           
                             ?>
                             <tr>
                                 <td>
@@ -243,7 +429,7 @@ include 'includes/header.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="5" style="text-align: center; color: #888;">
+                            <td colspan="4" style="text-align: center; color: #888;">
                                 No payout data available.
                             </td>
                         </tr>
