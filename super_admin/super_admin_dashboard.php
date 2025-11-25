@@ -652,164 +652,277 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <script>
-        // Mobile menu functionality
-        const menuToggle = document.getElementById('menuToggle');
-        const sidebar = document.getElementById('sidebar');
-        const sidebarOverlay = document.getElementById('sidebarOverlay');
+<script>
+    // Mobile menu functionality
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-        menuToggle.addEventListener('click', function() {
-            sidebar.classList.toggle('active');
-            sidebarOverlay.classList.toggle('active');
-        });
+    menuToggle.addEventListener('click', function() {
+        sidebar.classList.toggle('active');
+        sidebarOverlay.classList.toggle('active');
+    });
 
-        sidebarOverlay.addEventListener('click', function() {
-            sidebar.classList.remove('active');
-            sidebarOverlay.classList.remove('active');
-        });
+    sidebarOverlay.addEventListener('click', function() {
+        sidebar.classList.remove('active');
+        sidebarOverlay.classList.remove('active');
+    });
 
-        // Initialize charts
-        document.addEventListener('DOMContentLoaded', function() {
-            // Revenue Chart
-            const revenueCtx = document.getElementById('revenueChart').getContext('2d');
-            const revenueChart = new Chart(revenueCtx, {
-                type: 'line',
-                data: {
-                    labels: <?php echo json_encode($revenue_data['dates']); ?>,
-                    datasets: [
-                        {
-                            label: 'Deposits',
-                            data: <?php echo json_encode($revenue_data['deposits']); ?>,
-                            borderColor: '#00b894',
-                            backgroundColor: 'rgba(0, 184, 148, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: 'Withdrawals',
-                            data: <?php echo json_encode($revenue_data['withdrawals']); ?>,
-                            borderColor: '#d63031',
-                            backgroundColor: 'rgba(214, 48, 49, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.4,
-                            fill: true
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                color: 'rgba(255, 255, 255, 0.7)'
-                            }
+    // Initialize charts with proper styling
+    document.addEventListener('DOMContentLoaded', function() {
+        // Revenue Chart
+        const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+        const revenueChart = new Chart(revenueCtx, {
+            type: 'line',
+            data: {
+                labels: <?php echo json_encode($revenue_data['dates']); ?>,
+                datasets: [
+                    {
+                        label: 'Deposits',
+                        data: <?php echo json_encode($revenue_data['deposits']); ?>,
+                        borderColor: '#00b894',
+                        backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#00b894',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    },
+                    {
+                        label: 'Withdrawals',
+                        data: <?php echo json_encode($revenue_data['withdrawals']); ?>,
+                        borderColor: '#d63031',
+                        backgroundColor: 'rgba(214, 48, 49, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#d63031',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: 'var(--light-text)',
+                            font: {
+                                family: 'Poppins',
+                                size: 12,
+                                weight: '500'
+                            },
+                            padding: 20,
+                            usePointStyle: true
                         }
                     },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            },
-                            ticks: {
-                                color: 'rgba(255, 255, 255, 0.7)',
-                                callback: function(value) {
-                                    return '$' + value;
-                                }
-                            }
-                        },
-                        x: {
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            },
-                            ticks: {
-                                color: 'rgba(255, 255, 255, 0.7)'
+                    tooltip: {
+                        backgroundColor: 'var(--light-card)',
+                        titleColor: 'var(--light-text)',
+                        bodyColor: 'var(--light-text-secondary)',
+                        borderColor: 'var(--light-border)',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        displayColors: true,
+                        padding: 12,
+                        boxPadding: 6,
+                        usePointStyle: true,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
                             }
                         }
                     }
-                }
-            });
-
-            // Admin Distribution Chart
-            const adminCtx = document.getElementById('adminDistributionChart').getContext('2d');
-            const adminChart = new Chart(adminCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode($admin_distribution_data['admins']); ?>,
-                    datasets: [{
-                        label: 'Deposit Amount',
-                        data: <?php echo json_encode($admin_distribution_data['deposit_amounts']); ?>,
-                        backgroundColor: '#ff3c7e',
-                        borderColor: '#ff3c7e',
-                        borderWidth: 1
-                    }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(100, 116, 139, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'var(--light-text-secondary)',
+                            font: {
+                                family: 'Poppins',
+                                size: 11
+                            },
+                            callback: function(value) {
+                                return '$' + value;
+                            }
+                        },
+                        border: {
                             display: false
                         }
                     },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            },
-                            ticks: {
-                                color: 'rgba(255, 255, 255, 0.7)',
-                                callback: function(value) {
-                                    return '$' + value;
-                                }
-                            }
+                    x: {
+                        grid: {
+                            color: 'rgba(100, 116, 139, 0.1)',
+                            drawBorder: false
                         },
-                        x: {
-                            grid: {
-                                display: false
+                        ticks: {
+                            color: 'var(--light-text-secondary)',
+                            font: {
+                                family: 'Poppins',
+                                size: 11
                             },
-                            ticks: {
-                                color: 'rgba(255, 255, 255, 0.7)',
-                                maxRotation: 45,
-                                minRotation: 45
+                            maxRotation: 45
+                        },
+                        border: {
+                            display: false
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                animations: {
+                    tension: {
+                        duration: 1000,
+                        easing: 'linear'
+                    }
+                }
+            }
+        });
+
+        // Admin Distribution Chart
+        const adminCtx = document.getElementById('adminDistributionChart').getContext('2d');
+        const adminChart = new Chart(adminCtx, {
+            type: 'bar',
+            data: {
+                labels: <?php echo json_encode($admin_distribution_data['admins']); ?>,
+                datasets: [{
+                    label: 'Deposit Amount',
+                    data: <?php echo json_encode($admin_distribution_data['deposit_amounts']); ?>,
+                    backgroundColor: [
+                        'rgba(102, 126, 234, 0.8)',
+                        'rgba(102, 126, 234, 0.7)',
+                        'rgba(102, 126, 234, 0.6)',
+                        'rgba(102, 126, 234, 0.5)',
+                        'rgba(102, 126, 234, 0.4)'
+                    ],
+                    borderColor: 'rgba(102, 126, 234, 1)',
+                    borderWidth: 2,
+                    borderRadius: 8,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'var(--light-card)',
+                        titleColor: 'var(--light-text)',
+                        bodyColor: 'var(--light-text-secondary)',
+                        borderColor: 'var(--light-border)',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        padding: 12,
+                        boxPadding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                return `Deposits: $${context.parsed.y.toFixed(2)}`;
                             }
                         }
                     }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(100, 116, 139, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'var(--light-text-secondary)',
+                            font: {
+                                family: 'Poppins',
+                                size: 11
+                            },
+                            callback: function(value) {
+                                return '$' + value;
+                            }
+                        },
+                        border: {
+                            display: false
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            color: 'var(--light-text-secondary)',
+                            font: {
+                                family: 'Poppins',
+                                size: 11
+                            },
+                            maxRotation: 45,
+                            minRotation: 45
+                        },
+                        border: {
+                            display: false
+                        }
+                    }
+                },
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart'
                 }
-            });
+            }
+        });
 
-            // Chart period switching
-            document.querySelectorAll('.chart-action-btn').forEach(button => {
-                button.addEventListener('click', function() {
-                    const period = this.dataset.period;
-                    
-                    document.querySelectorAll('.chart-action-btn').forEach(btn => {
-                        btn.classList.remove('active');
-                    });
-                    this.classList.add('active');
-                    
-                    // In a real implementation, you would fetch new data for the selected period
-                    console.log('Switching to period:', period);
+        // Chart period switching
+        document.querySelectorAll('.chart-action-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const period = this.dataset.period;
+                
+                document.querySelectorAll('.chart-action-btn').forEach(btn => {
+                    btn.classList.remove('active');
                 });
+                this.classList.add('active');
+                
+                // In a real implementation, you would fetch new data for the selected period
+                console.log('Switching to period:', period);
+                
+                // Update chart data based on period
+                // This would typically involve an AJAX call to fetch new data
+                updateChartData(period);
             });
         });
 
-        // Update time every minute
-        function updateTime() {
-            const now = new Date();
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            const timeElement = document.querySelector('.current-time span');
-            if (timeElement) {
-                timeElement.textContent = now.toLocaleDateString('en-US', options);
-            }
+        function updateChartData(period) {
+            // This function would handle fetching new data and updating charts
+            console.log('Updating chart data for period:', period);
+            // Implement AJAX call here to fetch new data and update charts
         }
-        
-        updateTime();
-        setInterval(updateTime, 60000);
-    </script>
+    });
+
+    // Update time every minute
+    function updateTime() {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const timeElement = document.querySelector('.current-time span');
+        if (timeElement) {
+            timeElement.textContent = now.toLocaleDateString('en-US', options);
+        }
+    }
+    
+    updateTime();
+    setInterval(updateTime, 60000);
+</script>
 </body>
 </html>
