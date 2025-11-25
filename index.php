@@ -10,6 +10,47 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+
+$today = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+
+$stmt = $conn->prepare("SELECT bl.*, a.id as adminId FROM broker_limit bl 
+JOIN admins a ON bl.admin_id = a.id 
+JOIN users u ON u.referral_code = a.referral_code   
+
+WHERE u.id = ? ");
+
+$todayString = "%".$today."%";
+
+$stmt->bind_param("i", $_SESSION['user_id']);
+$stmt->execute();
+$broker_limit_result = $stmt->get_result();
+$broker_limit = $broker_limit_result->fetch_assoc();
+
+
+$stmt = $conn->prepare("SELECT bl.*, a.id as adminId FROM broker_limit bl 
+JOIN admins a ON bl.admin_id = a.id 
+JOIN users u ON u.referral_code = a.referral_code   
+JOIN admin_game_sessions ags ON ags.admin_id = a.id
+WHERE u.id = ? AND ags.created_at LIKE ?");
+
+$todayString = "%".$today."%";
+
+$stmt->bind_param("is", $_SESSION['user_id'], $todayString);
+$stmt->execute();
+$checkbroker_limit_result = $stmt->get_result();
+$checkbroker_limit = $checkbroker_limit_result->fetch_assoc();
+    
+if(!$checkbroker_limit) {
+
+    $stmt = $conn->prepare("INSERT INTO admin_game_sessions (admin_id, deposit_limit, withdrawal_limit, bet_limit, pnl_ratio) VALUES (?, ?, ?, ?, ?)
+    ");
+
+    $stmt->bind_param("iiiis", $broker_limit['adminId'], $broker_limit['deposit_limit'], $broker_limit['withdrawal_limit'], $broker_limit['bet_limit'], $broker_limit['pnl_ratio']);
+    $stmt->execute();
+
+}
+
+
 // Check if user is logged in
 $is_logged_in = false;
 $user_balance = 0;
